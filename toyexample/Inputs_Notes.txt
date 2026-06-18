@@ -1,0 +1,20 @@
+RunVars - constMortans - Choose whether mortality events (e.g., from patchvars and classvars) will be additive (1) or multiplicative (2). I went with option 2, so mortality values in class and patch will be multiplied. Alternatively, with option 1 you could set patch mortality = 0.1 for all patches, and then 0.1 for juveniles in classvars. This would result in 20% total mortality on juveniles (additive), and 10% on all other individuals. 
+
+PopVars - matemoveno = 6 - Option 6 forces individuals to mate within their own patch
+
+PopVars - dispersemoveno = 4 - Option 4 will choose a random patch for the individual to disperse to. Eventually you will probably want option 9, where you can define your own probability matrix. Other built-in cost transformations are also available as options.
+
+PopVars - Egg_Freq = 1 - reproduce once per year. If 0.5, reproduce on average every other year. If 2, reproduces twice per year
+
+PopVars - Loci and alleles. At least two loci are required, so I included 2 loci, 10 alleles each.
+
+PatchVars - Only included 7 patches for sake of simplicity and runtime. If more are added, the cost distance matrix needs to be updated as well. For 100x100, I wasn't sure if you meant 10,000 patches or 100 patches with a 100x100 cost distance matrix.
+
+PatchVars x ClassVars - Dispersal Prob - Vary probability that an individual will disperse each year by age and patch. I mimicked juvenile dispersal only here, 50% for age 0 and 0% for age 1 as a starting point. Probabilities in patch and class files are multiplied. Migration and straying movement are turned off. 
+
+ClassVars - Included 3 age classes (ages 0, 1, 2). The age 2 class is not functional (i.e., dies before contributing offspring). They are only included to ensure the age 1 class reproduces before dying.
+
+ClassVars - Age Mortality Out - Set the oldest age class = 1, to remove oldest individuals (age 2) and prevent unrealistic aging.
+
+ClassVars - Age Mortality Back - This is where I applied the mortality Orly mentioned (20% for juveniles and 10% for adults)
+
