@@ -92,7 +92,7 @@ def main(grid_size=10, f=1.0):
         non_zero_count += 2
     
     # Save the matrix
-    output_path = '/Users/wolfram-sb/Projects/CDMetaPOP/helper_scripts/patch_connectivity_matrix.csv'
+    output_path = '../toyexample/cdmats/cdmatrix.csv'
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
     # Write header
