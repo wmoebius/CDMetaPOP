@@ -1,6 +1,10 @@
 #!/bin/bash
 
 # Create subfolder name
+if [ -z "$1" ]; then
+    echo "Error: subfolder_name cannot be empty. Please provide a scenario name as the first argument."
+    exit 1
+fi
 subfolder_name="$1"
 
 # Create output subfolder
