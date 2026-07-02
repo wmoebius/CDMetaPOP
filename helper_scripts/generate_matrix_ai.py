@@ -98,9 +98,8 @@ def main(grid_size=10, f=1.0):
     # Write header
     patch_ids = [str(p['PatchID']) for p in patches]
     with open(output_path, 'w') as f:
-        f.write(','.join([''] + patch_ids) + '\n')
         for i, row in enumerate(matrix):
-            f.write(f"{patches[i]['PatchID']}," + ','.join(map(str, row)) + '\n')
+            f.write(','.join(map(str, row)) + '\n')
     
     print(f"Matrix saved to: {output_path}")
     print(f"Matrix shape: {n_patches}x{n_patches}")
