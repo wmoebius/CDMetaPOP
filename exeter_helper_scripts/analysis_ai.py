@@ -156,3 +156,46 @@ if not run_dirs:
 
 for input_dir in run_dirs:
     result = analyze_heterozygosity(input_dir, output_dir)
+
+f_pars_patchvars = os.path.join('..', 'output', scenario, 'patchvars', 'PatchVars.csv')
+f_pars_cdmats = os.path.join('..', 'output', scenario, 'cdmats', 'cdmatrix.csv')
+
+# Read the popvars file with patchid, xcoord, ycoord columns
+patchvars_df = pd.read_csv(f_pars_patchvars)
+
+# Read the cdmatrix file as a matrix
+cdmatrix_df = pd.read_csv(f_pars_cdmats)
+
+# Create mapping from patchid to coordinates
+patchid_to_coord = {row['PatchID']: (row['X'], row['Y']) for _, row in patchvars_df.iterrows()}
+
+# Create figure
+plt.figure(figsize=(8, 8))
+
+# Plot all points first
+plt.scatter(patchvars_df['X'], patchvars_df['Y'])
+
+# Find non-zero entries in cdmatrix_df and draw lines
+# Matrix rows/columns are ordered by patch_id, so we map indices to patch_ids by position
+patch_ids = patchvars_df['PatchID'].tolist()
+for r_idx in range(len(cdmatrix_df)):
+    for c_idx in range(len(cdmatrix_df.columns)):
+        value = cdmatrix_df.iloc[r_idx, c_idx]
+        if pd.notna(value) and value != 0:
+            patch_r = patch_ids[r_idx]
+            patch_c = patch_ids[c_idx]
+            x1, y1 = patchid_to_coord[patch_r]
+            x2, y2 = patchid_to_coord[patch_c]
+            plt.plot([x1, x2], [y1, y2], 'k-', alpha=0.2, linewidth=0.5)
+
+plt.xlabel('xcoord')
+plt.ylabel('ycoord')
+plt.title('Patch Coordinates with Dispersal Links')
+plt.grid(True, alpha=0.3)
+
+# Save as dispersal.png in output_dir
+os.makedirs(output_dir, exist_ok=True)
+dispersal_plot_path = os.path.join(output_dir, 'dispersal.png')
+plt.savefig(dispersal_plot_path, dpi=300, bbox_inches='tight')
+plt.close()
+print(f"Saved dispersal plot: {dispersal_plot_path}")
