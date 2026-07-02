@@ -14,4 +14,4 @@ mkdir -p "../output/${subfolder_name}/raw"
 cp -rp ../toyexample/* "../output/${subfolder_name}/"
 
 # Run the scenario
-uv run ../src/CDmetaPop.py "../output/${subfolder_name}" RunVars.csv raw/
+uv run ../src/CDmetaPOP.py "../output/${subfolder_name}" RunVars.csv raw/
