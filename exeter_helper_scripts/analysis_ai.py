@@ -6,48 +6,110 @@ import glob
 import os
 import sys
 
-def analyze_heterozygosity(input_dir, output_dir=None):
-    """
-    Analyze heterozygosity and population size from ind*.csv files.
-    
-    Args:
-        input_dir: Directory containing ind*.csv files
-        output_dir: Optional directory to save plots. If None, plots are not created.
-    
-    Returns:
-        A DataFrame with columns [PatchID, XCOORD, YCOORD, PopulationSize, Heterozygosity]
-        representing the matrix of average heterozygosity and population size per patch.
-    """
-    # Find all ind*.csv files
-    all_csv_files = [f for f in glob.glob(os.path.join(input_dir, 'ind*.csv')) if 'Sample' not in f]
 
-    # Only process the file with the largest number in the filename
-    # Extract numbers from filenames (ind12345.csv -> 12345) and sort
+def get_largest_ind_file(directory):
+    """
+    Find the ind*.csv file with the largest number in its filename.
+    Returns the path to the file or None if not found.
+    """
+    all_csv_files = [f for f in glob.glob(os.path.join(directory, 'ind*.csv')) if 'Sample' not in f]
+    if not all_csv_files:
+        return None
+    
     file_numbers = []
     for f in all_csv_files:
         basename = os.path.basename(f)
         if basename.startswith('ind'):
             num_part = basename[3:].split('.')[0]
-            if num_part.isdigit():
-                file_numbers.append(int(num_part))
-            else:
-                file_numbers.append(-1)
+            file_numbers.append(int(num_part) if num_part.isdigit() else -1)
         else:
             file_numbers.append(-1)
+    
+    paired = list(zip(all_csv_files, file_numbers))
+    paired.sort(key=lambda x: x[1])
+    return paired[-1][0]
 
-    # Pair files with their numbers, sort by number, and take the last (largest)
-    if all_csv_files:
-        paired = list(zip(all_csv_files, file_numbers))
-        paired.sort(key=lambda x: x[1])
-        csv_files = [paired[-1][0]]
-    else:
-        csv_files = []
 
-    if not csv_files:
+def format_base_name(csv_file):
+    """
+    Extract and format the base name from a CSV file path.
+    Pads the number with leading zeros for proper sorting.
+    """
+    base_name = os.path.splitext(os.path.basename(csv_file))[0]
+    if base_name.startswith('ind'):
+        num_part = base_name[3:]
+        if num_part.isdigit():
+            base_name = 'ind' + num_part.zfill(6)
+    return base_name
+
+
+def create_plot(patch_data, title_prefix, output_file):
+    """
+    Create and save a two-panel plot for heterozygosity and population size.
+    
+    Args:
+        patch_data: DataFrame with columns [PatchID, XCOORD, YCOORD, PopulationSize, Heterozygosity]
+        title_prefix: String to use in plot titles
+        output_file: Path to save the plot
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    
+    # Subplot 1: Heterozygosity
+    sc1 = ax1.scatter(
+        x=patch_data['XCOORD'],
+        y=patch_data['YCOORD'],
+        c=patch_data['Heterozygosity'],
+        cmap='viridis',
+        s=200,
+        edgecolors='black',
+        alpha=0.7,
+        vmin=0,
+        vmax=1
+    )
+    ax1.set_xlabel('XCOORD')
+    ax1.set_ylabel('YCOORD')
+    ax1.set_title(f'Heterozygosity by Patch - {title_prefix}')
+    ax1.grid(True, alpha=0.3)
+    plt.colorbar(sc1, ax=ax1, label='Heterozygosity')
+    
+    # Subplot 2: Population Size
+    sc2 = ax2.scatter(
+        x=patch_data['XCOORD'],
+        y=patch_data['YCOORD'],
+        c=patch_data['PopulationSize'],
+        cmap='plasma',
+        s=200,
+        edgecolors='black',
+        alpha=0.7
+    )
+    ax2.set_xlabel('XCOORD')
+    ax2.set_ylabel('YCOORD')
+    ax2.set_title(f'Population Size by Patch - {title_prefix}')
+    ax2.grid(True, alpha=0.3)
+    plt.colorbar(sc2, ax=ax2, label='Population Size')
+    
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def analyze_heterozygosity(input_dir, output_dir):
+    """
+    Analyze heterozygosity and population size from ind*.csv files.
+    
+    Args:
+        input_dir: Directory containing ind*.csv files
+        output_dir: Directory to save plots
+    
+    Returns:
+        A DataFrame with columns [PatchID, XCOORD, YCOORD, PopulationSize, Heterozygosity]
+        representing the matrix of average heterozygosity and population size per patch.
+    """
+    csv_file = get_largest_ind_file(input_dir)
+    
+    if csv_file is None:
         print(f"No files processed. Check that {input_dir} contains ind*.csv files.")
         return None
-    
-    csv_file = csv_files[0]
     
     # Read the CSV file
     df = pd.read_csv(csv_file)
@@ -71,70 +133,22 @@ def analyze_heterozygosity(input_dir, output_dir=None):
         Heterozygosity=('ID', lambda x: compute_heterozygosity(df.loc[x.index]))
     ).reset_index()
     
-    # Create plots if output_dir is provided
-    if output_dir is not None:
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Create figure with two subplots: heterozygosity and population size
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-        
-        # Subplot 1: Heterozygosity
-        sc1 = ax1.scatter(
-            x=patch_data['XCOORD'],
-            y=patch_data['YCOORD'],
-            c=patch_data['Heterozygosity'],
-            cmap='viridis',
-            s=200,
-            edgecolors='black',
-            alpha=0.7,
-            vmin=0,
-            vmax=1
-        )
-        ax1.set_xlabel('XCOORD')
-        ax1.set_ylabel('YCOORD')
-        ax1.set_title(f'Heterozygosity by Patch - {os.path.basename(csv_file)}')
-        ax1.grid(True, alpha=0.3)
-        plt.colorbar(sc1, ax=ax1, label='Heterozygosity')
-        
-        # Subplot 2: Population Size
-        sc2 = ax2.scatter(
-            x=patch_data['XCOORD'],
-            y=patch_data['YCOORD'],
-            c=patch_data['PopulationSize'],
-            cmap='plasma',
-            s=200,
-            edgecolors='black',
-            alpha=0.7
-        )
-        ax2.set_xlabel('XCOORD')
-        ax2.set_ylabel('YCOORD')
-        ax2.set_title(f'Population Size by Patch - {os.path.basename(csv_file)}')
-        ax2.grid(True, alpha=0.3)
-        plt.colorbar(sc2, ax=ax2, label='Population Size')
-        
-        plt.tight_layout()
-        
-        # Save the plot with name corresponding to input file
-        base_name = os.path.splitext(os.path.basename(csv_file))[0]
-        # Pad the number in filename with leading zeros for proper sorting
-        if base_name.startswith('ind'):
-            num_part = base_name[3:]
-            if num_part.isdigit():
-                base_name = 'ind' + num_part.zfill(6)
-        # Include the last part of input_dir in the filename
-        input_dir_last = os.path.basename(input_dir)
-        output_file = os.path.join(output_dir, f'{base_name}_{input_dir_last}.png')
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # Print average heterozygosity and population size for this file
-        avg_heterozygosity = patch_data['Heterozygosity'].mean()
-        avg_population_size = patch_data['PopulationSize'].mean()
-        print(f"Saved plot: {output_file}")
-        print(f"Average heterozygosity: {avg_heterozygosity:.4f}")
-        print(f"Average population size: {avg_population_size:.1f}")
+    os.makedirs(output_dir, exist_ok=True)
     
-    print(f"Processed {len(csv_files)} files.")
+    base_name = format_base_name(csv_file)
+    input_dir_last = os.path.basename(input_dir)
+    output_file = os.path.join(output_dir, f'{base_name}_{input_dir_last}.png')
+    
+    create_plot(patch_data, os.path.basename(csv_file), output_file)
+    
+    # Print average heterozygosity and population size for this file
+    avg_heterozygosity = patch_data['Heterozygosity'].mean()
+    avg_population_size = patch_data['PopulationSize'].mean()
+    print(f"Saved plot: {output_file}")
+    print(f"Average heterozygosity: {avg_heterozygosity:.4f}")
+    print(f"Average population size: {avg_population_size:.1f}")
+    
+    print(f"Processed 1 file.")
     return patch_data
 
 # Get scenario from command line argument
@@ -151,51 +165,45 @@ output_dir = os.path.join('..', 'output', scenario, 'analysed')
 print(output_dir)
 
 if not run_dirs:
-    print(f"No directories found matching pattern.")
+    print("No directories found matching pattern.")
     sys.exit(1)
+
+all_patch_data = []
 
 for input_dir in run_dirs:
     result = analyze_heterozygosity(input_dir, output_dir)
+    if result is not None:
+        all_patch_data.append(result)
 
-f_pars_patchvars = os.path.join('..', 'output', scenario, 'patchvars', 'PatchVars.csv')
-f_pars_cdmats = os.path.join('..', 'output', scenario, 'cdmats', 'cdmatrix.csv')
-
-# Read the popvars file with patchid, xcoord, ycoord columns
-patchvars_df = pd.read_csv(f_pars_patchvars)
-
-# Read the cdmatrix file as a matrix
-cdmatrix_df = pd.read_csv(f_pars_cdmats)
-
-# Create mapping from patchid to coordinates
-patchid_to_coord = {row['PatchID']: (row['X'], row['Y']) for _, row in patchvars_df.iterrows()}
-
-# Create figure
-plt.figure(figsize=(8, 8))
-
-# Plot all points first
-plt.scatter(patchvars_df['X'], patchvars_df['Y'])
-
-# Find non-zero entries in cdmatrix_df and draw lines
-# Matrix rows/columns are ordered by patch_id, so we map indices to patch_ids by position
-patch_ids = patchvars_df['PatchID'].tolist()
-for r_idx in range(len(cdmatrix_df)):
-    for c_idx in range(len(cdmatrix_df.columns)):
-        value = cdmatrix_df.iloc[r_idx, c_idx]
-        if pd.notna(value) and value != 0:
-            patch_r = patch_ids[r_idx]
-            patch_c = patch_ids[c_idx]
-            x1, y1 = patchid_to_coord[patch_r]
-            x2, y2 = patchid_to_coord[patch_c]
-            plt.plot([x1, x2], [y1, y2], 'k-', alpha=0.2, linewidth=0.5)
-
-plt.xlabel('xcoord')
-plt.ylabel('ycoord')
-plt.title('Patch Coordinates with Dispersal Links')
-plt.grid(True, alpha=0.3)
-
-# Save as dispersal.png in output_dir
-os.makedirs(output_dir, exist_ok=True)
-dispersal_plot_path = os.path.join(output_dir, 'dispersal.png')
-plt.savefig(dispersal_plot_path, dpi=300, bbox_inches='tight')
-plt.close()
-print(f"Saved dispersal plot: {dispersal_plot_path}")
+# Create average plot across all input directories
+if all_patch_data:
+    combined_df = pd.concat(all_patch_data, ignore_index=True)
+    
+    # Find the largest ind file across all directories for consistent naming
+    all_ind_files = []
+    for d in run_dirs:
+        csv_file = get_largest_ind_file(d)
+        if csv_file:
+            all_ind_files.append(csv_file)
+    
+    if all_ind_files:
+        # Sort by the numeric part of the filename
+        all_ind_files.sort(key=lambda f: int(os.path.basename(f)[3:].split('.')[0]) if os.path.basename(f).startswith('ind') else -1)
+        base_name = format_base_name(all_ind_files[-1])
+    else:
+        base_name = 'average'
+    
+    # Group by PatchID and compute mean for Heterozygosity and PopulationSize
+    avg_patch_data = combined_df.groupby('PatchID').agg(
+        XCOORD=('XCOORD', 'first'),
+        YCOORD=('YCOORD', 'first'),
+        PopulationSize=('PopulationSize', 'mean'),
+        Heterozygosity=('Heterozygosity', 'mean')
+    ).reset_index()
+    
+    output_file = os.path.join(output_dir, f'{base_name}_average.png')
+    create_plot(avg_patch_data, f'All Runs ({scenario})', output_file)
+    
+    print(f"\nSaved average plot: {output_file}")
+    print(f"Overall average heterozygosity: {avg_patch_data['Heterozygosity'].mean():.4f}")
+    print(f"Overall average population size: {avg_patch_data['PopulationSize'].mean():.1f}")

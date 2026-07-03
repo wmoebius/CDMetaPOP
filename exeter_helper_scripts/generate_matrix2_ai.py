@@ -3,31 +3,19 @@ Script to generate a matrix based on patch coordinates from PatchVars.csv.
 
 The matrix has rows and columns corresponding to PatchIDs.
 A cell (i,j) is 0 if:
-    1. Both patch i and patch j have X and Y coordinates between 1 and grid_size (inclusive)
+    1. Both patch i and patch j have X and Y coordinates satisfying 4 <= X <= 7 and 4 <= Y <= 7
     2. The patches are direct neighbors along the X or Y axis (Manhattan distance = 1)
-    3. The connection is among a randomly selected fraction f of all possible such connections
 Otherwise, the cell is 1.
 
 When writing the CSV, values are written as-is (0 for connections, 1 otherwise).
-
-Parameters:
-    grid_size: maximum coordinate value for the grid (default: 10)
-    f: fraction of possible connections to include (default: 1.0)
+This connects ALL sites in the 4-7 range on both axes (not randomly selected).
 """
 
-import argparse
 import os
 import sys
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description="Generate a dispersal matrix from patch coordinates.")
-parser.add_argument("--f", type=float, default=1.0, help="Fraction of possible connections to include (default: 1.0)")
-args = parser.parse_args()
-f = args.f
 
 # Direct path to PatchVars.csv
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -50,55 +38,41 @@ except Exception as e:
 n_patches = len(patches)
 print(f"Found {n_patches} patches")
 
-# Determine grid size from patch coordinates
-grid_size = max(max(p["X"] for p in patches), max(p["Y"] for p in patches))
-print(f"Grid size determined from patches: {grid_size}")
-print(f"Using connection fraction f={f}")
-
 # Create the matrix (list of lists) with 1 as default and 0 on diagonal
 matrix = [[1e9] * n_patches for _ in range(n_patches)]
 for i in range(n_patches):
     matrix[i][i] = 0
 
-# First, collect all possible undirected connections (i < j)
-possible_connections = []
+# First, collect all connections where both patches are in 4<=X<=7 and 4<=Y<=7
+# and are direct neighbors along X or Y axis
+connections = []
 for i in range(n_patches):
     x_i = patches[i]["X"]
     y_i = patches[i]["Y"]
+
+    # Only consider patches in the target range
+    if not (4 <= x_i <= 7 and 4 <= y_i <= 7):
+        continue
 
     for j in range(i + 1, n_patches):
         x_j = patches[j]["X"]
         y_j = patches[j]["Y"]
 
-        # Check if both patches are within the grid
-        if (
-            1 <= x_i <= grid_size
-            and 1 <= y_i <= grid_size
-            and 1 <= x_j <= grid_size
-            and 1 <= y_j <= grid_size
-        ):
-            # Check if patches are direct neighbors along X or Y axis only
-            if (abs(x_i - x_j) == 1 and y_i == y_j) or (
-                abs(y_i - y_j) == 1 and x_i == x_j
-            ):
-                possible_connections.append((i, j))
+        # Only consider patches in the target range
+        if not (4 <= x_j <= 7 and 4 <= y_j <= 7):
+            continue
 
-# Calculate how many connections to include
-total_possible = len(possible_connections)
-n_connections = int(f * total_possible)
+        # Check if patches are direct neighbors along X or Y axis only
+        if (abs(x_i - x_j) == 1 and y_i == y_j) or (abs(y_i - y_j) == 1 and x_i == x_j):
+            connections.append((i, j))
 
-# Randomly select connections (shuffle and take first n_connections)
-np.random.seed(42)  # For reproducibility
-np.random.shuffle(possible_connections)
-selected_connections = possible_connections[:n_connections]
+total_connections = len(connections)
+print(f"Total undirected connections in 4<=X<=7, 4<=Y<=7 range: {total_connections}")
 
-print(f"Total possible undirected connections: {total_possible}")
-print(f"Including fraction f={f}: {n_connections} connections")
-
-# Fill the matrix with selected connections (both directions for symmetry)
+# Fill the matrix with all connections (both directions for symmetry)
 # 0 indicates a connection
 zero_count = 0
-for i, j in selected_connections:
+for i, j in connections:
     matrix[i][j] = 0
     matrix[j][i] = 0
     zero_count += 2
@@ -108,7 +82,7 @@ output_dir = "../toyexample/cdmats"
 output_path = os.path.join(output_dir, "cdmatrix.csv")
 os.makedirs(output_dir, exist_ok=True)
 
-# Convert matrix to DataFrame and save using pandas
+# Convert matrix to DataFrame and save using pandas (no value replacement)
 matrix_df = pd.DataFrame(matrix)
 matrix_df.to_csv(output_path, index=False, header=False)
 
@@ -116,14 +90,12 @@ print(f"Matrix saved to: {output_path}")
 print(f"Matrix shape: {n_patches}x{n_patches}")
 print(f"Number of zero entries (connections): {zero_count}")
 
-# Print summary of patches in the grid
-grid_patches = [
-    p for p in patches if 1 <= p["X"] <= grid_size and 1 <= p["Y"] <= grid_size
-]
-print(f"\nPatches with X and Y in [1,{grid_size}]: {len(grid_patches)}")
+# Print summary of patches in the target range
+range_patches = [p for p in patches if 4 <= p["X"] <= 7 and 4 <= p["Y"] <= 7]
+print(f"\nPatches with X in [4,7] and Y in [4,7]: {len(range_patches)}")
 print("PatchID  X  Y")
-for p in grid_patches:
-    print(f"{p["PatchID"]:8} {p["X"]:2} {p["Y"]:2}")
+for p in range_patches:
+    print(f"{p['PatchID']:8} {p['X']:2} {p['Y']:2}")
 
 # Create mapping from patch index to coordinates using the patches data we already have
 patchid_to_coord = {p["PatchID"]: (p["X"], p["Y"]) for p in patches}
@@ -136,8 +108,12 @@ x_coords = [p["X"] for p in patches]
 y_coords = [p["Y"] for p in patches]
 plt.scatter(x_coords, y_coords)
 
+# Highlight the patches in the target range
+range_x = [p["X"] for p in range_patches]
+range_y = [p["Y"] for p in range_patches]
+plt.scatter(range_x, range_y, c="red", s=100, alpha=0.5)
+
 # Draw lines for all connections (where matrix value is 0)
-# Matrix indices correspond to patch indices (sorted by PatchID)
 patch_ids = [p["PatchID"] for p in patches]
 for r_idx in range(n_patches):
     for c_idx in range(n_patches):
@@ -148,7 +124,7 @@ for r_idx in range(n_patches):
 
 plt.xlabel("X")
 plt.ylabel("Y")
-plt.title("Patch Coordinates with Dispersal Links")
+plt.title("Patch Coordinates with Dispersal Links (4<=X<=7, 4<=Y<=7)")
 
 # Save as dispersal.png in the same directory as the matrix
 dispersal_plot_path = os.path.join(output_dir, "dispersal.png")
