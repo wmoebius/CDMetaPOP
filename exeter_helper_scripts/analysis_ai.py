@@ -103,7 +103,7 @@ def analyze_heterozygosity(input_dir, output_dir):
     
     Returns:
         A DataFrame with columns [PatchID, XCOORD, YCOORD, PopulationSize, Heterozygosity]
-        representing the matrix of average heterozygosity and population size per patch.
+        representing the matrix of minimum heterozygosity and population size per patch.
     """
     csv_file = get_largest_ind_file(input_dir)
     
@@ -141,11 +141,11 @@ def analyze_heterozygosity(input_dir, output_dir):
     
     create_plot(patch_data, os.path.basename(csv_file), output_file)
     
-    # Print average heterozygosity and population size for this file
-    avg_heterozygosity = patch_data['Heterozygosity'].mean()
+    # Print minimum heterozygosity and mean population size for this file
+    min_heterozygosity = patch_data['Heterozygosity'].min()
     avg_population_size = patch_data['PopulationSize'].mean()
     print(f"Saved plot: {output_file}")
-    print(f"Average heterozygosity: {avg_heterozygosity:.4f}")
+    print(f"Minimum heterozygosity: {min_heterozygosity:.4f}")
     print(f"Average population size: {avg_population_size:.1f}")
     
     print(f"Processed 1 file.")
@@ -175,7 +175,7 @@ for input_dir in run_dirs:
     if result is not None:
         all_patch_data.append(result)
 
-# Create average plot across all input directories
+# Create combined plot across all input directories
 if all_patch_data:
     combined_df = pd.concat(all_patch_data, ignore_index=True)
     
@@ -191,19 +191,19 @@ if all_patch_data:
         all_ind_files.sort(key=lambda f: int(os.path.basename(f)[3:].split('.')[0]) if os.path.basename(f).startswith('ind') else -1)
         base_name = format_base_name(all_ind_files[-1])
     else:
-        base_name = 'average'
+        base_name = 'combined'
     
-    # Group by PatchID and compute mean for Heterozygosity and PopulationSize
-    avg_patch_data = combined_df.groupby('PatchID').agg(
+    # Group by PatchID and compute min for Heterozygosity, mean for PopulationSize
+    combined_patch_data = combined_df.groupby('PatchID').agg(
         XCOORD=('XCOORD', 'first'),
         YCOORD=('YCOORD', 'first'),
         PopulationSize=('PopulationSize', 'mean'),
-        Heterozygosity=('Heterozygosity', 'mean')
+        Heterozygosity=('Heterozygosity', 'min')
     ).reset_index()
     
-    output_file = os.path.join(output_dir, f'{base_name}_average.png')
-    create_plot(avg_patch_data, f'All Runs ({scenario})', output_file)
+    output_file = os.path.join(output_dir, f'{base_name}_minimum.png')
+    create_plot(combined_patch_data, f'All Runs ({scenario})', output_file)
     
-    print(f"\nSaved average plot: {output_file}")
-    print(f"Overall average heterozygosity: {avg_patch_data['Heterozygosity'].mean():.4f}")
-    print(f"Overall average population size: {avg_patch_data['PopulationSize'].mean():.1f}")
+    print(f"\nSaved combined plot: {output_file}")
+    print(f"Overall minimum heterozygosity: {combined_patch_data['Heterozygosity'].min():.4f}")
+    print(f"Overall average population size: {combined_patch_data['PopulationSize'].mean():.1f}")
