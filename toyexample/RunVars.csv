@@ -1,2 +1,2 @@
 Popvars,sizecontrol,constMortans,mcruns,runtime,output_years,gridformat,gridsampling,summaryOutput,cdclimgentime,startcomp,implementcomp,ncores
-popvars/PopVars.csv,N,2,6,30000,1000,cdpop,Sample,N,0,0,N,6
+popvars/PopVars.csv,N,2,6,10000,1000,cdpop,Sample,N,0,0,N,6

@@ -122,8 +122,11 @@ def analyze_heterozygosity(input_dir, output_dir):
         total = len(group)
         # Count each unique genotype pattern
         pattern_counts = group.groupby(genotype_cols).size()
+        # print(pattern_counts/total)
         # p_i = count_i / total, sum(p_i^2)
         sum_p_squared = (pattern_counts / total).pow(2).sum()
+        print(total,sum_p_squared)
+        #print(sum_p_squared)
         return 1 - sum_p_squared
     
     patch_data = df.groupby('PatchID').agg(
