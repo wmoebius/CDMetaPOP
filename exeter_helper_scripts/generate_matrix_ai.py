@@ -121,9 +121,6 @@ grid_patches = [
     p for p in patches if 1 <= p["X"] <= grid_size and 1 <= p["Y"] <= grid_size
 ]
 print(f"\nPatches with X and Y in [1,{grid_size}]: {len(grid_patches)}")
-print("PatchID  X  Y")
-for p in grid_patches:
-    print(f"{p["PatchID"]:8} {p["X"]:2} {p["Y"]:2}")
 
 # Create mapping from patch index to coordinates using the patches data we already have
 patchid_to_coord = {p["PatchID"]: (p["X"], p["Y"]) for p in patches}

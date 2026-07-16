@@ -7,43 +7,63 @@ import os
 import sys
 
 
-def get_largest_ind_file(directory):
+def get_all_ind_files(directory):
     """
-    Find the ind*.csv file with the largest number in its filename.
-    Returns the path to the file or None if not found.
+    Find all ind*.csv files in a directory and return them sorted by their numeric part.
+    Returns a list of tuples (filepath, time_number).
     """
     all_csv_files = [f for f in glob.glob(os.path.join(directory, 'ind*.csv')) if 'Sample' not in f]
     if not all_csv_files:
-        return None
+        return []
     
-    file_numbers = []
+    file_data = []
     for f in all_csv_files:
         basename = os.path.basename(f)
         if basename.startswith('ind'):
             num_part = basename[3:].split('.')[0]
-            file_numbers.append(int(num_part) if num_part.isdigit() else -1)
-        else:
-            file_numbers.append(-1)
+            if num_part.isdigit():
+                file_data.append((f, int(num_part)))
     
-    paired = list(zip(all_csv_files, file_numbers))
-    paired.sort(key=lambda x: x[1])
-    return paired[-1][0]
+    # Sort by time number
+    file_data.sort(key=lambda x: x[1])
+    return file_data
 
 
-def format_base_name(csv_file):
+def compute_heterozygosity(group, genotype_cols):
+    """Compute heterozygosity for a group of individuals: 1 - sum(p_i^2)."""
+    total = len(group)
+    if total == 0:
+        return 0.0
+    pattern_counts = group.groupby(genotype_cols).size()
+    sum_p_squared = (pattern_counts / total).pow(2).sum()
+    return 1 - sum_p_squared
+
+
+def compute_patch_stats(df, genotype_cols=['L0A0', 'L0A1', 'L1A0', 'L1A1']):
     """
-    Extract and format the base name from a CSV file path.
-    Pads the number with leading zeros for proper sorting.
+    Compute heterozygosity and population size for each patch.
+    
+    Args:
+        df: DataFrame containing individual data
+        genotype_cols: List of column names representing genotype patterns
+        
+    Returns:
+        DataFrame with columns [PatchID, XCOORD, YCOORD, PopulationSize, Heterozygosity]
     """
-    base_name = os.path.splitext(os.path.basename(csv_file))[0]
-    if base_name.startswith('ind'):
-        num_part = base_name[3:]
-        if num_part.isdigit():
-            base_name = 'ind' + num_part.zfill(6)
-    return base_name
+    def get_heterozygosity(group):
+        return compute_heterozygosity(group, genotype_cols)
+    
+    patch_data = df.groupby('PatchID').agg(
+        XCOORD=('XCOORD', 'first'),
+        YCOORD=('YCOORD', 'first'),
+        PopulationSize=('ID', 'count'),
+        Heterozygosity=('ID', lambda x: get_heterozygosity(df.loc[x.index]))
+    ).reset_index()
+    
+    return patch_data
 
 
-def create_plot(patch_data, title_prefix, output_file):
+def create_spatial_plot(patch_data, title_prefix, output_file):
     """
     Create and save a two-panel plot for heterozygosity and population size.
     
@@ -93,120 +113,183 @@ def create_plot(patch_data, title_prefix, output_file):
     plt.close()
 
 
-def analyze_heterozygosity(input_dir, output_dir):
+def analyze_run(input_dir, genotype_cols=['L0A0', 'L0A1', 'L1A0', 'L1A1']):
     """
-    Analyze heterozygosity and population size from ind*.csv files.
+    Analyze heterozygosity for a single run directory.
     
     Args:
         input_dir: Directory containing ind*.csv files
-        output_dir: Directory to save plots
-    
+        genotype_cols: List of genotype column names
+        
     Returns:
-        A DataFrame with columns [PatchID, XCOORD, YCOORD, PopulationSize, Heterozygosity]
-        representing the matrix of minimum heterozygosity and population size per patch.
+        DataFrame with columns [Time, RunID, PatchID, XCOORD, YCOORD, PopulationSize, Heterozygosity]
     """
-    csv_file = get_largest_ind_file(input_dir)
+    ind_files = get_all_ind_files(input_dir)
     
-    if csv_file is None:
-        print(f"No files processed. Check that {input_dir} contains ind*.csv files.")
+    if not ind_files:
+        print(f"  No files processed. Check that {input_dir} contains ind*.csv files.")
         return None
     
-    # Read the CSV file
-    df = pd.read_csv(csv_file)
+    input_dir_last = os.path.basename(input_dir)
+    print(f"  Found {len(ind_files)} time points in {input_dir_last}")
     
-    # Compute heterozygosity per PatchID: 1 - sum(p_i^2) where p_i = freq of each genotype pattern
-    #genotype_cols = ['L0A0', 'L0A1', 'L1A0', 'L1A1']
-    genotype_cols = ['L0A0', 'L0A1']
+    all_patch_data = []
     
-    def compute_heterozygosity(group):
-        total = len(group)
-        # Count each unique genotype pattern
-        pattern_counts = group.groupby(genotype_cols).size()
-        # print(pattern_counts/total)
-        # p_i = count_i / total, sum(p_i^2)
-        sum_p_squared = (pattern_counts / total).pow(2).sum()
-        print(total,sum_p_squared)
-        #print(sum_p_squared)
-        return 1 - sum_p_squared
+    for csv_file, time_num in ind_files:
+        df = pd.read_csv(csv_file)
+        patch_data = compute_patch_stats(df, genotype_cols)
+        
+        for _, row in patch_data.iterrows():
+            all_patch_data.append({
+                'Time': time_num,
+                'RunID': input_dir_last,
+                'PatchID': row['PatchID'],
+                'XCOORD': row['XCOORD'],
+                'YCOORD': row['YCOORD'],
+                'PopulationSize': row['PopulationSize'],
+                'Heterozygosity': row['Heterozygosity']
+            })
+        
+        avg_heterozygosity = patch_data['Heterozygosity'].mean()
+        avg_population_size = patch_data['PopulationSize'].mean()
+        print(f"    Time {time_num}: avg_heterozygosity={avg_heterozygosity:.4f}, "
+              f"avg_population={avg_population_size:.1f}, patches={len(patch_data)}")
     
-    patch_data = df.groupby('PatchID').agg(
-        XCOORD=('XCOORD', 'first'),
-        YCOORD=('YCOORD', 'first'),
-        PopulationSize=('ID', 'count'),
-        Heterozygosity=('ID', lambda x: compute_heterozygosity(df.loc[x.index]))
-    ).reset_index()
+    result_df = pd.DataFrame(all_patch_data)
+    print(f"  Processed {len(ind_files)} files.")
+    return result_df
+
+
+def main():
+    # Get scenario from command line argument
+    if len(sys.argv) < 2:
+        print("Usage: python analysis_heterozygosity_ai.py scenario")
+        sys.exit(1)
     
+    scenario = sys.argv[1]
+    pattern = os.path.join('..', 'output', scenario, 'raw', '*', 'run0batch0mc*species0')
+    print(f"Searching for directories with pattern: {pattern}")
+    run_dirs = glob.glob(pattern)
+    
+    output_dir = os.path.join('..', 'output', scenario, 'analysed')
+    print(f"Output directory: {output_dir}")
+    
+    if not run_dirs:
+        print("No directories found matching pattern.")
+        sys.exit(1)
+    
+    # Process each run directory
+    genotype_cols = ['L0A0', 'L0A1', 'L1A0', 'L1A1']
+    all_run_data = []
+    
+    for input_dir in run_dirs:
+        result_df = analyze_run(input_dir, genotype_cols)
+        if result_df is not None:
+            all_run_data.append(result_df)
+    
+    if not all_run_data:
+        print("No data to process.")
+        sys.exit(1)
+    
+    # Combine all data
+    combined_df = pd.concat(all_run_data, ignore_index=True)
     os.makedirs(output_dir, exist_ok=True)
     
-    base_name = format_base_name(csv_file)
-    input_dir_last = os.path.basename(input_dir)
-    output_file = os.path.join(output_dir, f'{base_name}_{input_dir_last}.png')
+    # ============================================================
+    # 1. Spatial map plots for each time point (averaged across runs)
+    # ============================================================
+    all_times = sorted(combined_df['Time'].unique())
     
-    create_plot(patch_data, os.path.basename(csv_file), output_file)
+    for time_num in all_times:
+        time_data = combined_df[combined_df['Time'] == time_num]
+        
+        # Group by PatchID and compute mean across runs
+        combined_patch_data = time_data.groupby('PatchID').agg(
+            XCOORD=('XCOORD', 'first'),
+            YCOORD=('YCOORD', 'first'),
+            PopulationSize=('PopulationSize', 'mean'),
+            Heterozygosity=('Heterozygosity', 'mean')
+        ).reset_index()
+        
+        base_name = f'ind{time_num:06d}'
+        output_file = os.path.join(output_dir, f'{base_name}_average.png')
+        create_spatial_plot(combined_patch_data, f'All Runs ({scenario}) - Time {time_num}', output_file)
+        
+        print(f"\nSaved spatial map for time {time_num}: {output_file}")
+        print(f"  Average heterozygosity: {combined_patch_data['Heterozygosity'].mean():.4f}")
+        print(f"  Average population size: {combined_patch_data['PopulationSize'].mean():.1f}")
     
-    # Print minimum heterozygosity and mean population size for this file
-    min_heterozygosity = patch_data['Heterozygosity'].min()
-    avg_population_size = patch_data['PopulationSize'].mean()
-    print(f"Saved plot: {output_file}")
-    print(f"Minimum heterozygosity: {min_heterozygosity:.4f}")
-    print(f"Average population size: {avg_population_size:.1f}")
+    # ============================================================
+    # 2. Spatial map plots per replicate per time point
+    # ============================================================
+    for run_id in combined_df['RunID'].unique():
+        run_data = combined_df[combined_df['RunID'] == run_id]
+        run_times = sorted(run_data['Time'].unique())
+        for time_num in run_times:
+            time_data = run_data[run_data['Time'] == time_num]
+            patch_data = time_data[['PatchID', 'XCOORD', 'YCOORD', 'PopulationSize', 'Heterozygosity']].copy()
+            base_name = f'ind{time_num:06d}'
+            output_file = os.path.join(output_dir, f'{base_name}_run_{run_id}.png')
+            create_spatial_plot(patch_data, f'{run_id} - Time {time_num}', output_file)
+            print(f"  Saved replicate map for {run_id} time {time_num}: {output_file}")
     
-    print(f"Processed 1 file.")
-    return patch_data
-
-# Get scenario from command line argument
-if len(sys.argv) < 2:
-    print("Usage: python analysis_ai.py scenario")
-    sys.exit(1)
-
-scenario = sys.argv[1]
-pattern = os.path.join('..', 'output', scenario, 'raw', '*', 'run0batch0mc*species0')
-print(pattern)
-run_dirs = glob.glob(pattern)
-
-output_dir = os.path.join('..', 'output', scenario, 'analysed')
-print(output_dir)
-
-if not run_dirs:
-    print("No directories found matching pattern.")
-    sys.exit(1)
-
-all_patch_data = []
-
-for input_dir in run_dirs:
-    result = analyze_heterozygosity(input_dir, output_dir)
-    if result is not None:
-        all_patch_data.append(result)
-
-# Create combined plot across all input directories
-if all_patch_data:
-    combined_df = pd.concat(all_patch_data, ignore_index=True)
-    
-    # Find the largest ind file across all directories for consistent naming
-    all_ind_files = []
-    for d in run_dirs:
-        csv_file = get_largest_ind_file(d)
-        if csv_file:
-            all_ind_files.append(csv_file)
-    
-    if all_ind_files:
-        # Sort by the numeric part of the filename
-        all_ind_files.sort(key=lambda f: int(os.path.basename(f)[3:].split('.')[0]) if os.path.basename(f).startswith('ind') else -1)
-        base_name = format_base_name(all_ind_files[-1])
-    else:
-        base_name = 'combined'
-    
-    # Group by PatchID and compute min for Heterozygosity, mean for PopulationSize
-    combined_patch_data = combined_df.groupby('PatchID').agg(
-        XCOORD=('XCOORD', 'first'),
-        YCOORD=('YCOORD', 'first'),
-        PopulationSize=('PopulationSize', 'mean'),
-        Heterozygosity=('Heterozygosity', 'min')
+    # ============================================================
+    # 3. Time series: per-patch heterozygosity averaged across runs
+    # ============================================================
+    patch_time_series = combined_df.groupby(['PatchID', 'Time']).agg(
+        AverageHeterozygosity=('Heterozygosity', 'mean')
     ).reset_index()
     
-    output_file = os.path.join(output_dir, f'{base_name}_minimum.png')
-    create_plot(combined_patch_data, f'All Runs ({scenario})', output_file)
+    if not patch_time_series.empty:
+        output_file = os.path.join(output_dir, 'heterozygosity_per_patch_average_over_runs.png')
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        for patch_id in patch_time_series['PatchID'].unique():
+            patch_data = patch_time_series[patch_time_series['PatchID'] == patch_id].sort_values('Time')
+            ax.plot(patch_data['Time'], patch_data['AverageHeterozygosity'],
+                    marker='o', linestyle='-', markersize=3)
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Average Heterozygosity')
+        ax.set_title('Per-Patch Heterozygosity (averaged across runs) over Time')
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(0, 1)
+        
+        plt.tight_layout()
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"\nSaved per-patch average time series: {output_file}")
     
-    print(f"\nSaved combined plot: {output_file}")
-    print(f"Overall minimum heterozygosity: {combined_patch_data['Heterozygosity'].min():.4f}")
-    print(f"Overall average population size: {combined_patch_data['PopulationSize'].mean():.1f}")
+    # ============================================================
+    # 4. Per-patch time series: one plot per run showing all patches
+    # ============================================================
+    for run_id in combined_df['RunID'].unique():
+        run_data = combined_df[combined_df['RunID'] == run_id]
+        output_file = os.path.join(output_dir, f'heterozygosity_per_patch_{run_id}.png')
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        unique_patches = run_data['PatchID'].unique()
+        for patch_id in unique_patches:
+            patch_data = run_data[run_data['PatchID'] == patch_id].sort_values('Time')
+            ax.plot(patch_data['Time'], patch_data['Heterozygosity'],
+                    marker='o', linestyle='-', markersize=2)
+        
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Heterozygosity')
+        ax.set_title(f'Heterozygosity over Time per Patch - {run_id}')
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(0, 1)
+        
+        plt.tight_layout()
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"Saved per-patch plot: {output_file}")
+    print("\nDone!")
+
+
+if __name__ == '__main__':
+    main()
