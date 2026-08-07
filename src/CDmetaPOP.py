@@ -32,6 +32,12 @@ from multiprocessing import Process, Pool, Queue
 import multiprocessing
 import numpy as np
 
+##################################
+#ADDING FIXED RANDOM SEED HERE FOR REPRODUCIBILITY
+np.random.seed(12345)
+##################################
+
+
 #Import the package specific folders
 CDPOP_folder = os.path.dirname(os.path.abspath(SRC_PATH+"CDmetaPOP"))
 
