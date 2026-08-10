@@ -1,0 +1,8 @@
+1) Currently there is no way to fix a random seed for the sake of testing over a single node. This would be useful as it would let the user see if a parameter or routine is using within a simulation, or help for reproducibility.
+
+2) Within the .py files of CDmetaPOP it seems that all the input csv files are read by index. We think it would be really convenient for them to be read through pandas, as this would allow:
+	i) Elements to be rearranged, so collaborators can clearly see which parameters are prioritised within a project.
+	ii) Elements to be deleted, so collaborators can remove extraneous parameters not needed for simulation. Implementing default parameters (0 or N as appropriate) would alleviate issues ofnecessary parameters missing.
+	iii) Elements to be added, to allow for future implementation of more subroutines.
+
+
