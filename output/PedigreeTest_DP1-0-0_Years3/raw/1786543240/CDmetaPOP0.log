@@ -1,0 +1,161 @@
+
+CDmetaPOP Release 2025.07.28-09:09:09 Version version 3.08
+
+Author(s): Erin L Landguth, Casey Day, et al.
+
+Session runtime inputs from: ../output/PedigreeTest_DP1-0-0_Years3/input/RunVars.csv
+
+
+Session popvars inputs from: popvars/PopVars.csv
+
+
+Parallel processing across Monte Carlo replicates started across 1 cores.
+
+
+On run: 0
+
+
+DoPreProcess(): 0:00:00.033917
+GetMetrics() Initial: 0:00:00.003717
+The file ind-1.csv has been created
+DoUpdate(): 0:00:00.015060
+DoCDClimate(): 0:00:00.002073
+DoMate() and DoOffspring: 0:00:00.026915
+The file ind0.csv has been created
+Second DoUpdate(): 0:00:00.016784
+DoEmigration(): 0:00:00.078658
+DoOutMortality(): 0:00:00.002153
+The file ind0.csv has been created
+Third DoUpdate(): 0:00:00.016488
+DoImmigration(): 0:00:00.023132
+DoInMortality(): 0:00:00.003660
+GetMetrics(): 0:00:00.003059
+End Generation/Year Loop0: 0:00:00.187267
+
+DoCDClimate(): 0:00:00.001330
+DoMate() and DoOffspring: 0:00:00.020252
+The file ind1.csv has been created
+Second DoUpdate(): 0:00:00.023020
+DoEmigration(): 0:00:00.073535
+DoOutMortality(): 0:00:00.003783
+The file ind1.csv has been created
+Third DoUpdate(): 0:00:00.021724
+DoImmigration(): 0:00:00.029038
+DoInMortality(): 0:00:00.006029
+GetMetrics(): 0:00:00.003711
+End Generation/Year Loop1: 0:00:00.188716
+
+DoCDClimate(): 0:00:00.000565
+DoMate() and DoOffspring: 0:00:00.019341
+The file ind2.csv has been created
+Second DoUpdate(): 0:00:00.016026
+DoEmigration(): 0:00:00.087193
+DoOutMortality(): 0:00:00.003739
+The file ind2.csv has been created
+Third DoUpdate(): 0:00:00.022722
+DoImmigration(): 0:00:00.033505
+DoInMortality(): 0:00:00.005368
+GetMetrics(): 0:00:00.003783
+End Generation/Year Loop2: 0:00:00.193910
+
+The file summary_popAllTime.csv has been created
+The file summary_classAllTime.csv has been created
+DoPostProcess(): 0:00:00.000688
+End Monte Carlo Loop0: 0:00:00.636607
+
+DoPreProcess(): 0:00:00.026721
+GetMetrics() Initial: 0:00:00.004704
+The file ind-1.csv has been created
+DoUpdate(): 0:00:00.013179
+DoCDClimate(): 0:00:00.010031
+DoMate() and DoOffspring: 0:00:00.083673
+The file ind0.csv has been created
+Second DoUpdate(): 0:00:00.057856
+DoEmigration(): 0:00:00.277997
+DoOutMortality(): 0:00:00.002665
+The file ind0.csv has been created
+Third DoUpdate(): 0:00:00.021753
+DoImmigration(): 0:00:00.032766
+DoInMortality(): 0:00:00.013402
+GetMetrics(): 0:00:00.004806
+End Generation/Year Loop0: 0:00:00.516923
+
+DoCDClimate(): 0:00:00.000730
+DoMate() and DoOffspring: 0:00:00.011126
+The file ind1.csv has been created
+Second DoUpdate(): 0:00:00.018274
+DoEmigration(): 0:00:00.079108
+DoOutMortality(): 0:00:00.003587
+The file ind1.csv has been created
+Third DoUpdate(): 0:00:00.023273
+DoImmigration(): 0:00:00.030666
+DoInMortality(): 0:00:00.004952
+GetMetrics(): 0:00:00.004276
+End Generation/Year Loop1: 0:00:00.177900
+
+DoCDClimate(): 0:00:00.000389
+DoMate() and DoOffspring: 0:00:00.015882
+The file ind2.csv has been created
+Second DoUpdate(): 0:00:00.016372
+DoEmigration(): 0:00:00.087550
+DoOutMortality(): 0:00:00.005266
+The file ind2.csv has been created
+Third DoUpdate(): 0:00:00.021482
+DoImmigration(): 0:00:00.031086
+DoInMortality(): 0:00:00.005666
+GetMetrics(): 0:00:00.003897
+End Generation/Year Loop2: 0:00:00.188760
+
+The file summary_popAllTime.csv has been created
+The file summary_classAllTime.csv has been created
+DoPostProcess(): 0:00:00.001036
+End Monte Carlo Loop1: 0:00:00.930030
+
+DoPreProcess(): 0:00:00.023802
+GetMetrics() Initial: 0:00:00.004383
+The file ind-1.csv has been created
+DoUpdate(): 0:00:00.015114
+DoCDClimate(): 0:00:00.003641
+DoMate() and DoOffspring: 0:00:00.025637
+The file ind0.csv has been created
+Second DoUpdate(): 0:00:00.023821
+DoEmigration(): 0:00:00.087515
+DoOutMortality(): 0:00:00.002533
+The file ind0.csv has been created
+Third DoUpdate(): 0:00:00.020617
+DoImmigration(): 0:00:00.029858
+DoInMortality(): 0:00:00.004587
+GetMetrics(): 0:00:00.003959
+End Generation/Year Loop0: 0:00:00.204956
+
+DoCDClimate(): 0:00:00.000394
+DoMate() and DoOffspring: 0:00:00.014397
+The file ind1.csv has been created
+Second DoUpdate(): 0:00:00.015614
+DoEmigration(): 0:00:00.077398
+DoOutMortality(): 0:00:00.003764
+The file ind1.csv has been created
+Third DoUpdate(): 0:00:00.021643
+DoImmigration(): 0:00:00.028833
+DoInMortality(): 0:00:00.006012
+GetMetrics(): 0:00:00.004032
+End Generation/Year Loop1: 0:00:00.174625
+
+DoCDClimate(): 0:00:00.000389
+DoMate() and DoOffspring: 0:00:00.017994
+The file ind2.csv has been created
+Second DoUpdate(): 0:00:00.015768
+DoEmigration(): 0:00:00.088878
+DoOutMortality(): 0:00:00.004770
+The file ind2.csv has been created
+Third DoUpdate(): 0:00:00.022325
+DoImmigration(): 0:00:00.031754
+DoInMortality(): 0:00:00.005967
+GetMetrics(): 0:00:00.004536
+End Generation/Year Loop2: 0:00:00.193473
+
+The file summary_popAllTime.csv has been created
+The file summary_classAllTime.csv has been created
+DoPostProcess(): 0:00:00.000895
+End Monte Carlo Loop2: 0:00:00.618433
+
