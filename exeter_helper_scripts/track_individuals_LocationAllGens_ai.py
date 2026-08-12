@@ -55,65 +55,65 @@ for generation, file in ind_files:
 
 
 # ============================================================
-# 3. READ THE FIRST GENERATION
+# 3. Investigate uniqueness of identities
 # ============================================================
+for i in range(len(ind_files)):
+    generation, file = ind_files[i]
 
-first_generation, first_file = ind_files[0]
+    first = pd.read_csv(file)
 
-first = pd.read_csv(first_file)
+    print("\n Generation:",i)
+    print(file)
 
-print("\nFirst generation:")
-print(first_file)
-
-print("\nColumns:")
-print(first.columns.tolist())
-
-
-# ============================================================
-# 4. CREATE THE UNIQUE INDIVIDUAL ID
-# ============================================================
-
-def get_last_three(id_string):
-
-    parts = str(id_string).split("_")
-
-    return "_".join(parts[-3:])
+    print("\nColumns:")
+    print(first.columns.tolist())
 
 
-first["tracking_id"] = first["ID"].apply(
-    get_last_three
-)
+    # ============================================================
+    # 4. CREATE THE UNIQUE INDIVIDUAL ID
+    # ============================================================
+
+    def get_last_three(id_string):
+
+        parts = str(id_string).split("_")
+
+        return "_".join(parts[-3:])
 
 
-# ============================================================
-# 5. CHECK THAT THE TRACKING ID IS UNIQUE
-# ============================================================
-
-duplicates = first[
-    first.duplicated(
-        "tracking_id",
-        keep=False
-    )
-]
-
-if len(duplicates) > 0:
-
-    print("\nWARNING: duplicate tracking IDs!")
-
-    print(
-        duplicates[
-            ["ID", "tracking_id"]
-        ].sort_values("tracking_id")
-    )
-
-else:
-
-    print(
-        "\nAll last-three-field IDs are unique "
-        "in the first generation."
+    first["tracking_id"] = first["ID"].apply(
+        get_last_three
     )
 
 
+    # ============================================================
+    # 5. CHECK THAT THE TRACKING ID IS UNIQUE
+    # ============================================================
+
+    duplicates = first[
+        first.duplicated(
+            "tracking_id",
+            keep=False
+        )
+    ]
+
+    if len(duplicates) > 0:
+
+        print("\nWARNING: duplicate tracking IDs!")
+
+        print(
+            duplicates[
+                ["ID", "tracking_id"]
+            ].sort_values("tracking_id")
+        )
+
+    else:
+
+        print(
+            "\nAll last-three-field IDs are unique "
+            "in the first generation."
+        )
+
+checkpoint= input("Press enter to continue to the next tracking or type 'exit' to stop: ")
 # ============================================================
 # 6. FOLLOW EVERY INDIVIDUAL THROUGH EVERY GENERATION
 # ============================================================
