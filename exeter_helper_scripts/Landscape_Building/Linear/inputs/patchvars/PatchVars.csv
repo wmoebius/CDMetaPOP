@@ -1,0 +1,11 @@
+PatchID,X,Y,SubpatchNO,K,K StDev,N0,Natal Grounds,Migration Out Grounds,Genes Initialize,Class Vars,Mortality Out,Mortality Out StDev,Mortality Back,Mortality Back StDev,Mortality Eggs,Mortality Eggs StDev,Migration Out Prob,Set Migration Out,Migration Back Prob,Straying Prob,Dispersal Prob,GrowthTemperatureOut,GrowthTemperatureOutStDev,GrowDaysOut,GrowDaysOutStDev,GrowthTemperatureBack,GrowthTemperatureBackStDev,GrowDaysBack,GrowDaysBackStDev,Capture Probability Out,Capture Probability Back,HabitatOut,HabitatBack,Fitness_AA,Fitness_Aa,Fitness_aa,Fitness_BB,Fitness_Bb,Fitness_bb,Fitness_AABB,Fitness_AaBB,Fitness_aaBB,Fitness_AABb,Fitness_AaBb,Fitness_aaBb,Fitness_AAbb,Fitness_Aabb,Fitness_aabb,comp_coef
+1,4.359949021420038,0.38889347741837,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+2,5.496624778787091,6.529835889274153,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+3,4.20367802087489,4.955022315058112,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+4,2.046486340378425,9.289064495259955,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+5,2.9965467367452314,4.002409126542999,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+6,6.211338327692949,7.937131414155586,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+7,1.3457994534493356,7.703671818986196,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+8,1.8443986564691528,11.780027217250101,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+9,8.539752926394888,7.413552560728917,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+10,8.46561485357468,1.194682155135915,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
