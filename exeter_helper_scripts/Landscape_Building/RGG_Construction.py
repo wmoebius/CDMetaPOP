@@ -155,6 +155,31 @@ if args.type == "SLattice":
                             (Locations[i][1]-Locations[j][1])**2)
             
             DistMatrix[i][j] = DistMatrix[j][i] = distance
+
+if args.type == "HLattice":
+    #Create a hexagonal lattice of patches
+    side_length = args.n
+    x_coords = np.arange(side_length)
+    y_coords = np.arange(side_length)
+    
+    Locations = []
+    for i in range(side_length):
+        for j in range(side_length):
+            x = i + (j % 2) * 0.5  # Offset every other row
+            y = j * (np.sqrt(3)/2)  # Vertical spacing for hexagonal grid
+            Locations.append((x, y))
+    
+    Locations = np.array(Locations)
+    print("Locations:",Locations)
+    
+    DistMatrix = np.zeros(shape=(len(Locations),len(Locations)))
+    
+    for i in range(len(DistMatrix)):
+        for j in range(i,len(DistMatrix)):
+            distance = np.sqrt((Locations[i][0]-Locations[j][0])**2 + 
+                            (Locations[i][1]-Locations[j][1])**2)
+            
+            DistMatrix[i][j] = DistMatrix[j][i] = distance
 #=============================================================================#
 # CONSTUCT Probability MATRIX
 #=============================================================================#
@@ -179,6 +204,9 @@ if args.type == "RGG":
 
 if args.type == "SLattice":
     ProbMatrix = (DistMatrix <= 1).astype(float)
+
+if args.type == "HLattice":
+    ProbMatrix = (DistMatrix <= 1.1).astype(float)
 
 #Normalise
 np.fill_diagonal(ProbMatrix, 0)

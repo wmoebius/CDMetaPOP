@@ -1,0 +1,11 @@
+PatchID,X,Y,SubpatchNO,K,K StDev,N0,Natal Grounds,Migration Out Grounds,Genes Initialize,Class Vars,Mortality Out,Mortality Out StDev,Mortality Back,Mortality Back StDev,Mortality Eggs,Mortality Eggs StDev,Migration Out Prob,Set Migration Out,Migration Back Prob,Straying Prob,Dispersal Prob,GrowthTemperatureOut,GrowthTemperatureOutStDev,GrowDaysOut,GrowDaysOutStDev,GrowthTemperatureBack,GrowthTemperatureBackStDev,GrowDaysBack,GrowDaysBackStDev,Capture Probability Out,Capture Probability Back,HabitatOut,HabitatBack,Fitness_AA,Fitness_Aa,Fitness_aa,Fitness_BB,Fitness_Bb,Fitness_bb,Fitness_AABB,Fitness_AaBB,Fitness_aaBB,Fitness_AABb,Fitness_AaBb,Fitness_aaBb,Fitness_AAbb,Fitness_Aabb,Fitness_aabb,comp_coef
+1,0.0,0.0,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+2,0.5,0.8660254037844386,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+3,0.0,1.7320508075688772,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+4,0.5,2.598076211353316,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+5,0.0,3.4641016151377544,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+6,0.5,4.330127018922193,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+7,0.0,5.196152422706632,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+8,0.5,6.06217782649107,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+9,0.0,6.928203230275509,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+10,0.5,7.794228634059947,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
