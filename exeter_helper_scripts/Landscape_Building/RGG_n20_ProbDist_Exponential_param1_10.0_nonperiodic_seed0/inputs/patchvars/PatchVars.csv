@@ -1,0 +1,21 @@
+PatchID,X,Y,SubpatchNO,K,K StDev,N0,Natal Grounds,Migration Out Grounds,Genes Initialize,Class Vars,Mortality Out,Mortality Out StDev,Mortality Back,Mortality Back StDev,Mortality Eggs,Mortality Eggs StDev,Migration Out Prob,Set Migration Out,Migration Back Prob,Straying Prob,Dispersal Prob,GrowthTemperatureOut,GrowthTemperatureOutStDev,GrowDaysOut,GrowDaysOutStDev,GrowthTemperatureBack,GrowthTemperatureBackStDev,GrowDaysBack,GrowDaysBackStDev,Capture Probability Out,Capture Probability Back,HabitatOut,HabitatBack,Fitness_AA,Fitness_Aa,Fitness_aa,Fitness_BB,Fitness_Bb,Fitness_bb,Fitness_AABB,Fitness_AaBB,Fitness_aaBB,Fitness_AABb,Fitness_AaBb,Fitness_aaBb,Fitness_AAbb,Fitness_Aabb,Fitness_aabb,comp_coef
+1,0.5488135039273248,0.7151893663724195,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+2,0.6027633760716439,0.5448831829968969,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+3,0.4236547993389047,0.6458941130666561,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+4,0.4375872112626925,0.8917730007820798,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+5,0.9636627605010293,0.3834415188257777,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+6,0.7917250380826646,0.5288949197529045,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+7,0.5680445610939323,0.925596638292661,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+8,0.07103605819788694,0.08712929970154071,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+9,0.02021839744032572,0.832619845547938,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+10,0.7781567509498505,0.8700121482468192,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+11,0.978618342232764,0.7991585642167236,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+12,0.46147936225293185,0.7805291762864555,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+13,0.11827442586893322,0.6399210213275238,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+14,0.1433532874090464,0.9446689170495839,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+15,0.5218483217500717,0.4146619399905236,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+16,0.26455561210462697,0.7742336894342167,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+17,0.45615033221654855,0.5684339488686485,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+18,0.018789800436355142,0.6176354970758771,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+19,0.6120957227224214,0.6169339968747569,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+20,0.9437480785146242,0.6818202991034834,1,100,0,100,1,0,random,classvars/ClassVars.csv,0,0,0,0,0,0,0,N,0,0,1,0,0,0,0,0,0,0,0,N,N,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
