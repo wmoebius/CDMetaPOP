@@ -3,6 +3,8 @@ from pathlib import Path
 import re
 import argparse
 import matplotlib.pyplot as plt
+import numpy as np
+import gc
 
 
 # ============================================================
@@ -10,14 +12,14 @@ import matplotlib.pyplot as plt
 # ============================================================
 
 parser = argparse.ArgumentParser(
-    description="Track the spatial ancestry of a genotype in a patch."
+    description="Track spatial ancestry across Monte-Carlo runs."
 )
 
 parser.add_argument(
     "-d",
     type=str,
     required=True,
-    help="Directory containing ind<number>.csv files"
+    help="Directory containing the Monte-Carlo run directories"
 )
 
 parser.add_argument(
@@ -25,6 +27,7 @@ parser.add_argument(
     type=str,
     required=True,
     choices=[
+        "all",
         "L0A0A0",
         "L0A0A1",
         "L0A1A1",
@@ -32,7 +35,7 @@ parser.add_argument(
         "L1A0A1",
         "L1A1A1"
     ],
-    help="The genotype in question"
+    help="The genotype in question, or 'all' to use every individual"
 )
 
 parser.add_argument(
@@ -57,7 +60,7 @@ parser.add_argument(
 parser.add_argument(
     "--no-plot",
     action="store_true",
-    help="Do not create the heatmap"
+    help="Do not create heatmaps"
 )
 
 
@@ -86,88 +89,77 @@ if not output_dir.is_dir():
 
 
 # ============================================================
-# FIND INDIVIDUAL FILES
+# FIND MONTE-CARLO RUN DIRECTORIES
 # ============================================================
 
-ind_files = []
+run_directories = []
 
-for file in output_dir.glob("ind*.csv"):
+for directory in output_dir.iterdir():
+
+    if not directory.is_dir():
+
+        continue
+
 
     match = re.fullmatch(
-        r"ind(\d+)\.csv",
-        file.name
+        r"run(\d+)batch(\d+)mc(\d+)species(\d+)",
+        directory.name
     )
+
 
     if match:
 
-        generation = int(
+        run_number = int(
             match.group(1)
         )
 
-        ind_files.append(
-            (generation, file)
+        batch_number = int(
+            match.group(2)
+        )
+
+        mc_number = int(
+            match.group(3)
+        )
+
+        species_number = int(
+            match.group(4)
         )
 
 
-ind_files.sort(
+        run_directories.append(
+            (
+                mc_number,
+                directory
+            )
+        )
+
+
+run_directories.sort(
     key=lambda x: x[0]
 )
 
 
-if len(ind_files) == 0:
+if len(run_directories) == 0:
 
     raise FileNotFoundError(
-        f"No ind<number>.csv files found in "
+        f"No Monte-Carlo run directories found in "
         f"{output_dir}"
     )
 
 
-generations = []
-
-for generation, file in ind_files:
-
-    generations.append(
-        generation
-    )
-
-
-final_generation = generations[-1]
-
-
-# ============================================================
-# READ ALL IND FILES
-# ============================================================
-
 print()
 
 print(
-    "Reading individual files..."
+    f"Found {len(run_directories)} "
+    f"Monte-Carlo runs."
 )
 
-ind_data = {}
-
-for generation, file in ind_files:
+for mc_number, directory in run_directories:
 
     print(
-        f"  Reading generation {generation}: "
-        f"{file.name}"
+        f"  MC {mc_number}: "
+        f"{directory.name}"
     )
-
-    df = pd.read_csv(
-        file
-    )
-
-    ind_data[
-        generation
-    ] = df
-
-
-print()
-
-print(
-    f"Final generation: "
-    f"{final_generation}"
-)
 
 
 # ============================================================
@@ -279,118 +271,91 @@ def genotype_matches(
 
 
 # ============================================================
-# CREATE ID LOOKUP TABLES
+# FIND IND FILES
 # ============================================================
 
-print()
+def find_ind_files(
+    run_directory
+):
 
-print(
-    "Creating ID lookup tables..."
-)
-
-id_lookup = {}
-
-for generation in generations:
-
-    id_lookup[
-        generation
-    ] = {}
-
-    df = ind_data[
-        generation
-    ]
+    ind_files = []
 
 
-    for _, row in df.iterrows():
-
-        individual_id = get_last_three(
-            row["ID"]
-        )
-
-
-        id_lookup[
-            generation
-        ][
-            individual_id
-        ] = row
-
-
-# ============================================================
-# FIND STARTING INDIVIDUALS
-# ============================================================
-
-print()
-
-print(
-    "Finding starting individuals..."
-)
-
-final_df = ind_data[
-    final_generation
-]
-
-starting_individuals = []
-
-
-for _, row in final_df.iterrows():
-
-    if str(
-        row["PatchID"]
-    ) != args.PID:
-
-        continue
-
-
-    if genotype_matches(
-        row,
-        args.g
+    for file in run_directory.glob(
+        "ind*.csv"
     ):
 
-        individual = {
-
-            "ID": get_last_three(
-                row["ID"]
-            ),
-
-            "PatchID": row["PatchID"],
-
-            "MID": get_last_three(
-                row["MID"]
-            ),
-
-            "FID": get_last_three(
-                row["FID"]
-            )
-        }
-
-
-        starting_individuals.append(
-            individual
+        match = re.fullmatch(
+            r"ind(\d+)\.csv",
+            file.name
         )
 
 
-print(
-    f"Found {len(starting_individuals)} "
-    f"starting individuals"
-)
+        if match:
+
+            generation = int(
+                match.group(1)
+            )
 
 
-if len(starting_individuals) == 0:
+            ind_files.append(
+                (
+                    generation,
+                    file
+                )
+            )
 
-    raise ValueError(
-        f"No individuals with genotype "
-        f"{args.g} were found in "
-        f"PatchID {args.PID}"
+
+    ind_files.sort(
+        key=lambda x: x[0]
     )
 
 
+    if len(ind_files) == 0:
+
+        raise FileNotFoundError(
+            f"No ind<number>.csv files found in "
+            f"{run_directory}"
+        )
+
+
+    return ind_files
+
+
 # ============================================================
-# CACHES
+# FIND ALL PATCHES IN A RUN
 # ============================================================
 
-individual_cache = {}
+def find_all_patches(
+    ind_data,
+    generations
+):
 
-ancestry_cache = {}
+    all_patches = set()
+
+
+    for generation in generations:
+
+        df = ind_data[
+            generation
+        ]
+
+
+        for patch in df[
+            "PatchID"
+        ].unique():
+
+            all_patches.add(
+                patch
+            )
+
+
+    all_patches = sorted(
+        all_patches
+    )
+
+
+    return all_patches
 
 
 # ============================================================
@@ -431,7 +396,9 @@ def valid_parent_id(
 
 def trace_individual(
     individual_id,
-    start_generation
+    start_generation,
+    id_lookup,
+    individual_cache
 ):
 
     individual_id = get_last_three(
@@ -459,6 +426,7 @@ def trace_individual(
     history = []
 
     mother_id = None
+
     father_id = None
 
 
@@ -473,14 +441,6 @@ def trace_individual(
 
     while current_generation >= 0:
 
-        print(
-            f"        Looking for "
-            f"{individual_id} "
-            f"in generation "
-            f"{current_generation}"
-        )
-
-
         generation_lookup = id_lookup.get(
             current_generation,
             {}
@@ -492,12 +452,6 @@ def trace_individual(
         # ----------------------------------------------------
 
         if individual_id not in generation_lookup:
-
-            print(
-                f"        {individual_id} "
-                f"NOT FOUND in generation "
-                f"{current_generation}"
-            )
 
             break
 
@@ -511,30 +465,23 @@ def trace_individual(
         ]
 
 
-        print(
-            f"        FOUND {individual_id} "
-            f"in generation "
-            f"{current_generation} "
-            f"in patch "
-            f"{row['PatchID']}"
-        )
-
-
         # ----------------------------------------------------
-        # Record this individual's location
+        # Record location
         # ----------------------------------------------------
 
         history.append(
             {
                 "Year": current_generation,
+
                 "ID": individual_id,
+
                 "PatchID": row["PatchID"]
             }
         )
 
 
         # ----------------------------------------------------
-        # Store parents from the most recent occurrence
+        # Store parents
         # ----------------------------------------------------
 
         mother_id = get_last_three(
@@ -547,7 +494,7 @@ def trace_individual(
 
 
         # ----------------------------------------------------
-        # Move backwards one generation
+        # Move backwards
         # ----------------------------------------------------
 
         current_generation -= 1
@@ -593,7 +540,10 @@ def trace_individual(
 
 def trace_ancestry_branch(
     individual_id,
-    start_generation
+    start_generation,
+    id_lookup,
+    individual_cache,
+    ancestry_cache
 ):
 
     individual_id = get_last_three(
@@ -613,13 +563,6 @@ def trace_ancestry_branch(
 
     if cache_key in ancestry_cache:
 
-        print(
-            f"      Using cached branch for "
-            f"{individual_id} "
-            f"from generation "
-            f"{start_generation}"
-        )
-
         return ancestry_cache[
             cache_key
         ]
@@ -634,12 +577,14 @@ def trace_ancestry_branch(
 
     result = trace_individual(
         individual_id,
-        start_generation
+        start_generation,
+        id_lookup,
+        individual_cache
     )
 
 
     # --------------------------------------------------------
-    # Add this individual's history
+    # Add individual's history
     # --------------------------------------------------------
 
     for entry in result[
@@ -659,13 +604,6 @@ def trace_ancestry_branch(
         result[
             "ParentStartGeneration"
         ]
-    )
-
-
-    print(
-        f"      {individual_id} "
-        f"disappeared before generation "
-        f"{parent_start_generation + 1}"
     )
 
 
@@ -700,17 +638,12 @@ def trace_ancestry_branch(
         )
 
 
-        print(
-            f"      Following mother "
-            f"{mother_id} "
-            f"from generation "
-            f"{parent_start_generation}"
-        )
-
-
         mother_branch = trace_ancestry_branch(
             mother_id,
-            parent_start_generation
+            parent_start_generation,
+            id_lookup,
+            individual_cache,
+            ancestry_cache
         )
 
 
@@ -739,17 +672,12 @@ def trace_ancestry_branch(
         )
 
 
-        print(
-            f"      Following father "
-            f"{father_id} "
-            f"from generation "
-            f"{parent_start_generation}"
-        )
-
-
         father_branch = trace_ancestry_branch(
             father_id,
-            parent_start_generation
+            parent_start_generation,
+            id_lookup,
+            individual_cache,
+            ancestry_cache
         )
 
 
@@ -773,26 +701,11 @@ def trace_ancestry_branch(
 
 
 # ============================================================
-# TRACE ALL STARTING INDIVIDUALS
+# PROCESS ONE MONTE-CARLO RUN
 # ============================================================
 
-print()
-
-print(
-    "Tracing ancestry..."
-)
-
-
-all_ancestry = []
-
-
-number_starting = len(
-    starting_individuals
-)
-
-
-for lineage_number, individual in enumerate(
-    starting_individuals
+def process_run(
+    run_directory
 ):
 
     print()
@@ -801,14 +714,8 @@ for lineage_number, individual in enumerate(
     )
 
     print(
-        f"Individual "
-        f"{lineage_number + 1} / "
-        f"{number_starting}"
-    )
-
-    print(
-        f"ID: "
-        f"{individual['ID']}"
+        f"Processing: "
+        f"{run_directory.name}"
     )
 
     print(
@@ -816,386 +723,461 @@ for lineage_number, individual in enumerate(
     )
 
 
-    branch = trace_ancestry_branch(
-        individual["ID"],
-        final_generation
+    # ========================================================
+    # FIND IND FILES
+    # ========================================================
+
+    ind_files = find_ind_files(
+        run_directory
     )
 
 
-    # --------------------------------------------------------
-    # Add lineage number
-    # --------------------------------------------------------
+    generations = []
 
-    for entry in branch:
+    for generation, file in ind_files:
 
-        new_entry = entry.copy()
-
-        new_entry[
-            "Lineage"
-        ] = lineage_number
-
-
-        all_ancestry.append(
-            new_entry
+        generations.append(
+            generation
         )
 
 
-# ============================================================
-# CREATE ANCESTRY DATAFRAME
-# ============================================================
-
-ancestry_df = pd.DataFrame(
-    all_ancestry
-)
-
-
-if len(ancestry_df) == 0:
-
-    raise ValueError(
-        "No ancestry could be reconstructed."
-    )
-
-
-ancestry_output = (
-    output_dir
-    / f"ancestry_{args.g}_{args.PID}.csv"
-)
-
-
-ancestry_df.to_csv(
-    ancestry_output,
-    index=False
-)
-
-
-print()
-
-print(
-    "Ancestry data written to:"
-)
-
-print(
-    f"  {ancestry_output}"
-)
-
-
-# ============================================================
-# DIAGNOSTIC: NUMBER OF RECORDS PER GENERATION
-# ============================================================
-
-print()
-
-print(
-    "Ancestry records by generation:"
-)
-
-
-for generation in generations:
-
-    generation_df = ancestry_df[
-        ancestry_df["Year"]
-        == generation
-    ]
-
-
-    record_count = len(
-        generation_df
-    )
-
-
-    unique_count = generation_df[
-        "ID"
-    ].nunique()
+    final_generation = generations[-1]
 
 
     print(
-        f"  Generation {generation}: "
-        f"{record_count} records, "
-        f"{unique_count} unique individuals"
+        f"Final generation: "
+        f"{final_generation}"
     )
 
 
-# ============================================================
-# FIND ALL PATCHES
-# ============================================================
+    # ========================================================
+    # READ IND FILES
+    # ========================================================
 
-all_patches = set()
-
-
-for generation in generations:
-
-    df = ind_data[
-        generation
-    ]
+    ind_data = {}
 
 
-    for patch in df[
-        "PatchID"
-    ].unique():
+    for generation, file in ind_files:
 
-        all_patches.add(
-            patch
+        print(
+            f"  Reading generation "
+            f"{generation}"
         )
 
 
-all_patches = sorted(
-    all_patches
-)
+        df = pd.read_csv(
+            file
+        )
 
 
-# ============================================================
-# CALCULATE ANCESTRAL COUNTS
-# ============================================================
-#
-# By default:
-#
-#     Every occurrence in the ancestry tree is counted.
-#
-# With --unique:
-#
-#     Each individual is counted only once within a
-#     particular generation.
-#
-# ============================================================
+        ind_data[
+            generation
+        ] = df
 
-print()
 
-if args.unique:
+    # ========================================================
+    # CREATE ID LOOKUP
+    # ========================================================
 
     print(
-        "Calculating UNIQUE ancestral counts..."
-    )
-
-else:
-
-    print(
-        "Calculating ancestral counts..."
+        "  Creating ID lookup..."
     )
 
 
-patch_proportions = []
+    id_lookup = {}
 
 
-for year in generations:
+    for generation in generations:
 
-    year_df = ancestry_df[
-        ancestry_df["Year"]
-        == year
-    ]
-
-
-    # ========================================================
-    # UNIQUE MODE
-    # ========================================================
-
-    if args.unique:
-
-        # ----------------------------------------------------
-        # Remove duplicate occurrences of the same individual
-        # within this generation.
-        # ----------------------------------------------------
-
-        year_df = year_df.drop_duplicates(
-            subset=["ID"]
-        )
+        id_lookup[
+            generation
+        ] = {}
 
 
-    # ========================================================
-    # TOTAL NUMBER OF ANCESTORS
-    # ========================================================
-
-    total_ancestors = len(
-        year_df
-    )
+        df = ind_data[
+            generation
+        ]
 
 
-    # ========================================================
-    # COUNT EACH PATCH
-    # ========================================================
+        for _, row in df.iterrows():
 
-    for patch in all_patches:
-
-        patch_count = len(
-            year_df[
-                year_df["PatchID"]
-                == patch
-            ]
-        )
-
-
-        if total_ancestors > 0:
-
-            proportion = (
-                patch_count
-                / total_ancestors
+            individual_id = get_last_three(
+                row["ID"]
             )
+
+
+            id_lookup[
+                generation
+            ][
+                individual_id
+            ] = row
+
+
+    # ========================================================
+    # FIND PATCHES
+    # ========================================================
+
+    all_patches = find_all_patches(
+        ind_data,
+        generations
+    )
+
+
+    # ========================================================
+    # FIND STARTING INDIVIDUALS
+    # ========================================================
+
+    print(
+        "  Finding starting individuals..."
+    )
+
+
+    final_df = ind_data[
+        final_generation
+    ]
+
+
+    starting_individuals = []
+
+
+    for _, row in final_df.iterrows():
+
+        # ----------------------------------------------------
+        # Patch filter
+        # ----------------------------------------------------
+
+        if str(
+            row["PatchID"]
+        ) != args.PID:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Genotype filter
+        # ----------------------------------------------------
+
+        if args.g == "all":
+
+            genotype_match = True
 
         else:
 
-            proportion = 0
+            genotype_match = genotype_matches(
+                row,
+                args.g
+            )
 
 
-        patch_proportions.append(
-            {
-                "Year": year,
+        if genotype_match:
 
-                "PatchID": patch,
+            individual = {
 
-                "Count": patch_count,
+                "ID": get_last_three(
+                    row["ID"]
+                ),
 
-                "TotalAncestors":
-                    total_ancestors,
+                "PatchID": row["PatchID"],
 
-                "Proportion":
-                    proportion,
+                "MID": get_last_three(
+                    row["MID"]
+                ),
 
-                "Percentage":
-                    proportion * 100
+                "FID": get_last_three(
+                    row["FID"]
+                )
             }
+
+
+            starting_individuals.append(
+                individual
+            )
+
+
+    print(
+        f"  Starting individuals: "
+        f"{len(starting_individuals)}"
+    )
+
+
+    if len(starting_individuals) == 0:
+
+        raise ValueError(
+            f"No starting individuals found "
+            f"in PatchID {args.PID}"
         )
 
 
-proportions_df = pd.DataFrame(
-    patch_proportions
-)
+    # ========================================================
+    # CACHES
+    # ========================================================
+
+    individual_cache = {}
+
+    ancestry_cache = {}
 
 
-# ============================================================
-# SAVE PROPORTIONS
-# ============================================================
-
-if args.unique:
-
-    unique_suffix = "unique"
-
-else:
-
-    unique_suffix = "all"
-
-
-proportions_output = (
-    output_dir
-    / f"ancestry_proportions_"
-      f"{args.g}_{args.PID}_"
-      f"{unique_suffix}.csv"
-)
-
-
-proportions_df.to_csv(
-    proportions_output,
-    index=False
-)
-
-
-print()
-
-print(
-    "Ancestral proportions written to:"
-)
-
-print(
-    f"  {proportions_output}"
-)
-
-
-# ============================================================
-# CREATE PERCENTAGE HEATMAP DATA
-# ============================================================
-#
-# IMPORTANT:
-#
-# The HEATMAP COLOUR is ALWAYS based on percentage.
-#
-# --counts only changes the text displayed inside the cells.
-#
-# ============================================================
-
-heatmap_df = proportions_df.pivot(
-    index="Year",
-    columns="PatchID",
-    values="Percentage"
-)
-
-
-heatmap_df = heatmap_df.fillna(
-    0
-)
-
-
-# ------------------------------------------------------------
-# Explicitly include every generation and patch
-# ------------------------------------------------------------
-
-heatmap_df = heatmap_df.reindex(
-    index=generations,
-    columns=all_patches,
-    fill_value=0
-)
-
-
-# ============================================================
-# SAVE HEATMAP DATA
-# ============================================================
-
-heatmap_data_output = (
-    output_dir
-    / f"ancestry_heatmap_data_"
-      f"{args.g}_{args.PID}_"
-      f"{unique_suffix}.csv"
-)
-
-
-heatmap_df.to_csv(
-    heatmap_data_output
-)
-
-
-print()
-
-print(
-    "Heatmap percentage data written to:"
-)
-
-print(
-    f"  {heatmap_data_output}"
-)
-
-
-# ============================================================
-# CREATE COUNT DATA FOR ANNOTATIONS
-# ============================================================
-
-count_heatmap_df = proportions_df.pivot(
-    index="Year",
-    columns="PatchID",
-    values="Count"
-)
-
-
-count_heatmap_df = count_heatmap_df.fillna(
-    0
-)
-
-
-count_heatmap_df = count_heatmap_df.reindex(
-    index=generations,
-    columns=all_patches,
-    fill_value=0
-)
-
-
-# ============================================================
-# PLOT HEATMAP
-# ============================================================
-
-if not args.no_plot:
-
-    print()
+    # ========================================================
+    # TRACE ANCESTRY
+    # ========================================================
 
     print(
-        "Creating heatmap..."
+        "  Tracing ancestry..."
     )
 
+
+    all_ancestry = []
+
+
+    for lineage_number, individual in enumerate(
+        starting_individuals
+    ):
+
+        branch = trace_ancestry_branch(
+            individual["ID"],
+            final_generation,
+            id_lookup,
+            individual_cache,
+            ancestry_cache
+        )
+
+
+        for entry in branch:
+
+            new_entry = entry.copy()
+
+            new_entry[
+                "Lineage"
+            ] = lineage_number
+
+
+            all_ancestry.append(
+                new_entry
+            )
+
+
+    # ========================================================
+    # CREATE ANCESTRY DATAFRAME
+    # ========================================================
+
+    ancestry_df = pd.DataFrame(
+        all_ancestry
+    )
+
+
+    if len(ancestry_df) == 0:
+
+        raise ValueError(
+            "No ancestry could be reconstructed."
+        )
+
+
+    # ========================================================
+    # CALCULATE COUNTS / PERCENTAGES
+    # ========================================================
+
+    patch_proportions = []
+
+
+    for year in generations:
+
+        year_df = ancestry_df[
+            ancestry_df["Year"]
+            == year
+        ]
+
+
+        # ----------------------------------------------------
+        # UNIQUE MODE
+        # ----------------------------------------------------
+
+        if args.unique:
+
+            year_df = year_df.drop_duplicates(
+                subset=["ID"]
+            )
+
+
+        # ----------------------------------------------------
+        # TOTAL
+        # ----------------------------------------------------
+
+        total_ancestors = len(
+            year_df
+        )
+
+
+        # ----------------------------------------------------
+        # PATCH COUNTS
+        # ----------------------------------------------------
+
+        for patch in all_patches:
+
+            patch_count = len(
+                year_df[
+                    year_df["PatchID"]
+                    == patch
+                ]
+            )
+
+
+            if total_ancestors > 0:
+
+                proportion = (
+                    patch_count
+                    / total_ancestors
+                )
+
+            else:
+
+                proportion = 0
+
+
+            patch_proportions.append(
+                {
+                    "Year": year,
+
+                    "PatchID": patch,
+
+                    "Count": patch_count,
+
+                    "TotalAncestors":
+                        total_ancestors,
+
+                    "Percentage":
+                        proportion * 100
+                }
+            )
+
+
+    proportions_df = pd.DataFrame(
+        patch_proportions
+    )
+
+
+    # ========================================================
+    # CREATE HEATMAP MATRICES
+    # ========================================================
+
+    percentage_matrix = (
+        proportions_df.pivot(
+            index="Year",
+            columns="PatchID",
+            values="Percentage"
+        )
+    )
+
+
+    percentage_matrix = (
+        percentage_matrix
+        .fillna(0)
+        .reindex(
+            index=generations,
+            columns=all_patches,
+            fill_value=0
+        )
+    )
+
+
+    count_matrix = (
+        proportions_df.pivot(
+            index="Year",
+            columns="PatchID",
+            values="Count"
+        )
+    )
+
+
+    count_matrix = (
+        count_matrix
+        .fillna(0)
+        .reindex(
+            index=generations,
+            columns=all_patches,
+            fill_value=0
+        )
+    )
+
+
+    # ========================================================
+    # PLOT INDIVIDUAL RUN HEATMAP
+    # ========================================================
+
+    if not args.no_plot:
+
+        print(
+            "  Creating run heatmap..."
+        )
+
+
+        plot_heatmap(
+            percentage_matrix,
+            count_matrix,
+            generations,
+            all_patches,
+            run_directory,
+            f"MC run {run_directory.name}",
+            f"ancestry_heatmap_{args.g}_{args.PID}",
+            vmin=0,
+            vmax=100
+        )
+
+
+    # ========================================================
+    # IMPORTANT MEMORY CLEANUP
+    # ========================================================
+    #
+    # The potentially enormous ancestry information is no
+    # longer needed after percentage_matrix/count_matrix
+    # have been created.
+    #
+    # ========================================================
+
+    del ancestry_df
+    del all_ancestry
+    del ancestry_cache
+    del individual_cache
+    del id_lookup
+    del ind_data
+    del final_df
+    del starting_individuals
+
+
+    gc.collect()
+
+
+    print(
+        "  Trajectory data discarded from memory."
+    )
+
+
+    # ========================================================
+    # RETURN ONLY SMALL MATRICES
+    # ========================================================
+
+    return (
+        percentage_matrix.copy(),
+        count_matrix.copy(),
+        generations,
+        all_patches
+    )
+
+
+# ============================================================
+# HEATMAP FUNCTION
+# ============================================================
+
+def plot_heatmap(
+    percentage_matrix,
+    count_matrix,
+    generations,
+    all_patches,
+    save_directory,
+    title,
+    filename,
+    vmin=0,
+    vmax=100
+):
 
     fig_width = max(
         8,
@@ -1218,27 +1200,21 @@ if not args.no_plot:
 
 
     # ========================================================
-    # HEATMAP COLOUR
-    # ========================================================
-    #
-    # ALWAYS USE PERCENTAGE.
-    #
-    # This means that --counts has NO effect on the colour.
-    #
+    # COLOUR = PERCENTAGE
     # ========================================================
 
     image = ax.imshow(
-        heatmap_df.values,
+        percentage_matrix.values,
         aspect="auto",
         interpolation="nearest",
         origin="upper",
-        vmin=0,
-        vmax=100
+        vmin=vmin,
+        vmax=vmax
     )
 
 
     # ========================================================
-    # LABELS
+    # AXES
     # ========================================================
 
     ax.set_xlabel(
@@ -1250,42 +1226,10 @@ if not args.no_plot:
     )
 
 
-    if args.unique:
-
-        ancestry_type = (
-            "Unique ancestors"
-        )
-
-    else:
-
-        ancestry_type = (
-            "Ancestry"
-        )
-
-
-    if args.counts:
-
-        display_type = (
-            "Counts shown; colour = percentage"
-        )
-
-    else:
-
-        display_type = (
-            "Percentage"
-        )
-
-
     ax.set_title(
-        f"Spatial ancestry of "
-        f"{args.g} in Patch {args.PID}\n"
-        f"({ancestry_type}; {display_type})"
+        title
     )
 
-
-    # ========================================================
-    # X AXIS = PATCH
-    # ========================================================
 
     ax.set_xticks(
         range(
@@ -1297,10 +1241,6 @@ if not args.no_plot:
         all_patches
     )
 
-
-    # ========================================================
-    # Y AXIS = GENERATION
-    # ========================================================
 
     ax.set_yticks(
         range(
@@ -1326,7 +1266,7 @@ if not args.no_plot:
         ):
 
             percentage_value = (
-                heatmap_df.iloc[
+                percentage_matrix.iloc[
                     row_number,
                     column_number
                 ]
@@ -1334,7 +1274,7 @@ if not args.no_plot:
 
 
             count_value = (
-                count_heatmap_df.iloc[
+                count_matrix.iloc[
                     row_number,
                     column_number
                 ]
@@ -1367,7 +1307,7 @@ if not args.no_plot:
 
 
     # ========================================================
-    # COLORBAR
+    # COLOURBAR
     # ========================================================
 
     colourbar = fig.colorbar(
@@ -1381,35 +1321,31 @@ if not args.no_plot:
     )
 
 
-    # --------------------------------------------------------
-    # Explicitly force colourbar to 0--100%
-    # --------------------------------------------------------
+    if vmax <= 100:
 
-    colourbar.set_ticks(
-        [
-            0,
-            20,
-            40,
-            60,
-            80,
-            100
-        ]
-    )
+        colourbar.set_ticks(
+            [
+                0,
+                20,
+                40,
+                60,
+                80,
+                100
+            ]
+        )
 
 
     plt.tight_layout()
 
 
-    heatmap_output = (
-        output_dir
-        / f"ancestry_heatmap_"
-          f"{args.g}_{args.PID}_"
-          f"{unique_suffix}.png"
+    output_file = (
+        save_directory
+        / f"{filename}.png"
     )
 
 
     plt.savefig(
-        heatmap_output,
+        output_file,
         dpi=300,
         bbox_inches="tight"
     )
@@ -1418,15 +1354,287 @@ if not args.no_plot:
     plt.close()
 
 
+    print(
+        f"  Heatmap written to:"
+    )
+
+    print(
+        f"    {output_file}"
+    )
+
+
+# ============================================================
+# PROCESS ALL MONTE-CARLO RUNS
+# ============================================================
+
+all_percentage_matrices = []
+
+all_count_matrices = []
+
+
+common_generations = None
+common_patches = None
+
+
+for mc_number, run_directory in run_directories:
+
+    percentage_matrix, count_matrix, generations, patches = (
+        process_run(
+            run_directory
+        )
+    )
+
+
+    # ========================================================
+    # MAKE SURE ALL RUNS HAVE SAME DIMENSIONS
+    # ========================================================
+
+    if common_generations is None:
+
+        common_generations = generations
+
+        common_patches = patches
+
+    else:
+
+        if generations != common_generations:
+
+            raise ValueError(
+                f"Generation mismatch between Monte-Carlo runs.\n"
+                f"Expected: {common_generations}\n"
+                f"Found: {generations}\n"
+                f"Problem run: {run_directory}"
+            )
+
+
+        if patches != common_patches:
+
+            raise ValueError(
+                f"Patch mismatch between Monte-Carlo runs.\n"
+                f"Expected: {common_patches}\n"
+                f"Found: {patches}\n"
+                f"Problem run: {run_directory}"
+            )
+
+
+    # ========================================================
+    # ONLY STORE SMALL MATRICES
+    # ========================================================
+
+    all_percentage_matrices.append(
+        percentage_matrix
+    )
+
+    all_count_matrices.append(
+        count_matrix
+    )
+
+
+    # ========================================================
+    # DELETE REFERENCES TO THIS RUN
+    # ========================================================
+
+    del percentage_matrix
+    del count_matrix
+
+    gc.collect()
+
+
+# ============================================================
+# COMBINE MONTE-CARLO RUNS
+# ============================================================
+
+print()
+print(
+    "================================================"
+)
+
+print(
+    "Combining Monte-Carlo runs..."
+)
+
+print(
+    "================================================"
+)
+
+
+number_runs = len(
+    all_percentage_matrices
+)
+
+
+# ============================================================
+# SUMMED PERCENTAGE HEATMAP
+# ============================================================
+
+summed_percentage_matrix = (
+    all_percentage_matrices[0].copy()
+)
+
+
+for matrix in all_percentage_matrices[1:]:
+
+    summed_percentage_matrix = (
+        summed_percentage_matrix
+        + matrix
+    )
+
+
+# ============================================================
+# AVERAGE PERCENTAGE HEATMAP
+# ============================================================
+
+average_percentage_matrix = (
+    summed_percentage_matrix
+    / number_runs
+)
+
+
+# ============================================================
+# SUMMED COUNT MATRIX
+# ============================================================
+
+summed_count_matrix = (
+    all_count_matrices[0].copy()
+)
+
+
+for matrix in all_count_matrices[1:]:
+
+    summed_count_matrix = (
+        summed_count_matrix
+        + matrix
+    )
+
+
+# ============================================================
+# AVERAGE COUNT MATRIX
+# ============================================================
+
+average_count_matrix = (
+    summed_count_matrix
+    / number_runs
+)
+
+
+# ============================================================
+# SAVE SUMMED DATA
+# ============================================================
+
+summed_output = (
+    output_dir
+    / f"ancestry_heatmap_SUM_"
+      f"{args.g}_{args.PID}.csv"
+)
+
+
+summed_percentage_matrix.to_csv(
+    summed_output
+)
+
+
+# ============================================================
+# SAVE AVERAGED DATA
+# ============================================================
+
+average_output = (
+    output_dir
+    / f"ancestry_heatmap_AVERAGE_"
+      f"{args.g}_{args.PID}.csv"
+)
+
+
+average_percentage_matrix.to_csv(
+    average_output
+)
+
+
+print()
+
+print(
+    f"Summed percentage data written to:"
+)
+
+print(
+    f"  {summed_output}"
+)
+
+
+print()
+
+print(
+    f"Average percentage data written to:"
+)
+
+print(
+    f"  {average_output}"
+)
+
+
+# ============================================================
+# PLOT SUMMED HEATMAP
+# ============================================================
+
+if not args.no_plot:
+
     print()
 
     print(
-        "Heatmap written to:"
+        "Creating summed heatmap..."
     )
 
-    print(
-        f"  {heatmap_output}"
+
+    plot_heatmap(
+        summed_percentage_matrix,
+        summed_count_matrix,
+        common_generations,
+        common_patches,
+        output_dir,
+        f"SUMMED spatial ancestry\n"
+        f"{args.g} | Patch {args.PID} | "
+        f"{number_runs} Monte-Carlo runs",
+        f"ancestry_heatmap_SUM_"
+        f"{args.g}_{args.PID}",
+        vmin=0,
+        vmax=100 * number_runs
     )
+
+
+    # ========================================================
+    # PLOT AVERAGE HEATMAP
+    # ========================================================
+
+    print()
+
+    print(
+        "Creating averaged heatmap..."
+    )
+
+
+    plot_heatmap(
+        average_percentage_matrix,
+        average_count_matrix,
+        common_generations,
+        common_patches,
+        output_dir,
+        f"AVERAGED spatial ancestry\n"
+        f"{args.g} | Patch {args.PID} | "
+        f"{number_runs} Monte-Carlo runs",
+        f"ancestry_heatmap_AVERAGE_"
+        f"{args.g}_{args.PID}",
+        vmin=0,
+        vmax=100
+    )
+
+
+# ============================================================
+# CLEAN UP COMBINED MATRICES
+# ============================================================
+
+del all_percentage_matrices
+del all_count_matrices
+
+gc.collect()
 
 
 # ============================================================
@@ -1434,7 +1642,6 @@ if not args.no_plot:
 # ============================================================
 
 print()
-
 print(
     "================================================"
 )
@@ -1448,26 +1655,19 @@ print(
 )
 
 print(
-    f"Starting individuals: "
-    f"{len(starting_individuals)}"
+    f"Monte-Carlo runs processed: "
+    f"{number_runs}"
 )
 
 print(
-    f"Cached individual histories: "
-    f"{len(individual_cache)}"
+    f"Starting genotype: "
+    f"{args.g}"
 )
 
 print(
-    f"Cached ancestry branches: "
-    f"{len(ancestry_cache)}"
+    f"Starting PatchID: "
+    f"{args.PID}"
 )
-
-print(
-    f"Ancestry records: "
-    f"{len(ancestry_df)}"
-)
-
-print()
 
 if args.unique:
 
@@ -1502,23 +1702,16 @@ print(
 print()
 
 print(
-    "Output files:"
+    "Per-run heatmaps are stored inside "
+    "their respective Monte-Carlo directories."
 )
 
 print(
-    f"  {ancestry_output}"
+    "Summed and averaged heatmaps are stored "
+    "in the supplied parent directory."
 )
 
 print(
-    f"  {proportions_output}"
+    "Large ancestry trajectory data has been "
+    "discarded after each run."
 )
-
-print(
-    f"  {heatmap_data_output}"
-)
-
-if not args.no_plot:
-
-    print(
-        f"  {heatmap_output}"
-    )

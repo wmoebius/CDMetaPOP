@@ -13,6 +13,82 @@ import argparse
 import os
 import networkx as nx
 
+
+
+def Find_Connected_Components(Locations, radius):
+    """
+    Find connected components of points.
+
+    Two points are directly connected if their Euclidean
+    distance is <= radius.
+
+    Returns
+    -------
+    Components : list of lists
+        Each element is a list containing the points belonging
+        to one connected component.
+    """
+
+    n = len(Locations)
+
+    # Calculate pairwise distances
+    Diff = Locations[:, np.newaxis, :] - Locations[np.newaxis, :, :]
+    Distances = np.sqrt(np.sum(Diff**2, axis=2))
+
+    # Adjacency matrix
+    Connected = Distances <= radius
+
+    # Keep track of which points have been visited
+    Visited = np.zeros(n, dtype=bool)
+
+    Components = []
+
+    for i in range(n):
+
+        if Visited[i]:
+            continue
+
+        # Start a new component
+        Component_Indices = []
+        Stack = [i]
+        Visited[i] = True
+
+        while Stack:
+
+            current = Stack.pop()
+            Component_Indices.append(current)
+
+            # Find all unvisited neighbours
+            Neighbours = np.where(Connected[current] & ~Visited)[0]
+
+            for neighbour in Neighbours:
+                Visited[neighbour] = True
+                Stack.append(neighbour)
+
+        # Convert indices to actual points
+        Components.append(Locations[Component_Indices].tolist())
+
+    return Components
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #=============================================================================#
 # ARGPARSER
 #=============================================================================#
@@ -53,13 +129,13 @@ parser.add_argument("-n",
                     help='Number of patches to create')
 
 def DistChoices(value):
-    if value in ["Linear","Exponential","Gaussian"]:
+    if value in ["Linear","Exponential","Gaussian","Power"]:
         return value
     else:
         try:
             value = float(value)
         except ValueError:
-            raise argparse.ArgumentTypeError(f"Invalid value for -ProbDist: {value}. Must be 'Linear', 'Exponential', 'Gaussian', or a float.")
+            raise argparse.ArgumentTypeError(f"Invalid value for -ProbDist: {value}. Must be 'Linear', 'Exponential', 'Gaussian', 'Power', or a float.")
 
         if value <= 0:
             raise argparse.ArgumentTypeError(f"Invalid value for -ProbDist: {value}. Must be a positive float.")
@@ -68,7 +144,7 @@ def DistChoices(value):
 parser.add_argument("-ProbDist",
                     type=DistChoices,
                     default = "0.1",
-                    help='Probability distribution to use for dispersal: Linear, Exponential, Gaussian, or a float value for radius of connection.')
+                    help='Probability distribution to use for dispersal: Linear, Exponential, Gaussian, Power, or a float value for radius of connection.')
 
 
 parser.add_argument("-param1",
@@ -83,8 +159,16 @@ parser.add_argument("-param2",
 
 
 
+parser.add_argument("-sticky_radius",
+                    type=float,
+                    default = 0,
+                    help='Radius about where we combine nodes into larger nodes.')
+
 args = parser.parse_args()
 
+##########################################################
+# PROCESS ARGS
+##########################################################
 
 np.random.seed(args.r)
 
@@ -99,6 +183,9 @@ if outdir == "":
             outdir = "RGG_n%d_ProbDist_%s" % (args.n, str(args.ProbDist))
 
             if args.ProbDist == "Exponential":
+                outdir += "_param1_%s" % (str(args.param1))
+
+            if args.ProbDist == 'Power':
                 outdir += "_param1_%s" % (str(args.param1))
     
         if args.type == "SLattice":
@@ -120,6 +207,8 @@ if outdir == "":
 
 
         if args.type == "RGG":
+            if args.sticky_radius > 0:
+                outdir += "_sticky_radius_%s" % (str(args.sticky_radius))
             outdir += "_seed%d" % (args.r)
 
 
@@ -150,9 +239,7 @@ if args.i != "":
 #number of individual patches
 n = args.n
 
-#scale of the bounding box of patches
-scale_x = 10
-scale_y = 15
+
 
 
 #=============================================================================#
@@ -171,7 +258,31 @@ if args.type == "RGG":
     Locations = np.asarray(Locations)
     print("Locations:",Locations)
 
-    DistMatrix = np.zeros(shape=(n,n))
+    #If sticky_radius is greater than 0, find connected components and combine them into single nodes.
+    if args.sticky_radius > 0:
+        Components = Find_Connected_Components(Locations, args.sticky_radius)
+
+
+        New_locations = []
+        New_locations_Sizes = []
+
+        for i in Components:
+            x = 0
+            y = 0
+            for j in i:
+                x+= j[0]
+                y+= j[1]
+                
+            New_locations.append((x/len(i),y/len(i)))
+            New_locations_Sizes.append(len(i))
+            
+        Locations = np.asarray(New_locations)
+        Locations_Sizes = np.asarray(New_locations_Sizes)
+
+
+
+
+    DistMatrix = np.zeros(shape=(len(Locations),len(Locations)))
 
     for i in range(len(DistMatrix)):
         for j in range(i,len(DistMatrix)):
@@ -291,6 +402,10 @@ if args.type == "RGG":
         sigma = DistMatrix.mean()
         ProbMatrix = np.exp(-DistMatrix**2 / (2 * sigma**2))
 
+    elif args.ProbDist == "Power":
+        ProbMatrix = 1 / (DistMatrix**args.param1)
+        ProbMatrix[DistMatrix == 0] = 0  # Avoid division by zero
+
 
 if args.type == "SLattice":
     ProbMatrix = (DistMatrix <= 1).astype(float)
@@ -307,10 +422,24 @@ np.fill_diagonal(ProbMatrix, 0)
 # Row sums
 row_sums = ProbMatrix.sum(axis=1, keepdims=True)
 
+
 # Only normalise rows with at least one possible destination
 non_empty = row_sums[:, 0] > 0
 
 ProbMatrix[non_empty] /= row_sums[non_empty]
+
+
+###############
+# Eigenvalues
+###############
+if args.type == "RGG":
+    Eigenvalues = np.linalg.eigvals(ProbMatrix)
+    print("Eigenvalues:", Eigenvalues)
+    print("Effective number of mixing steps:", 1 / (1 - max(abs(Eigenvalues[1:]))))  # Exclude the first eigenvalue which is always 1
+
+###############
+
+
 
 
 #=============================================================================#
@@ -339,13 +468,24 @@ pos = {i: Locations[i] for i in range(len(Locations))}
 fig, ax = plt.subplots(figsize=(10, 10))
 
 # Draw nodes
-nx.draw_networkx_nodes(
-    G,
-    pos,
-    node_size=100,
-    ax=ax,
-    hide_ticks=False
-)
+if args.sticky_radius == 0:
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        node_size=100,
+        ax=ax,
+        hide_ticks=False
+    )
+else:
+    """If nodes have been collated, make them larger"""
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        node_size=100 * Locations_Sizes**2,  # Scale node size by the number of combined nodes
+        ax=ax,
+        hide_ticks=False
+    )
+
 
 # Draw edges
 for u, v, key, data in G.edges(keys=True, data=True):
@@ -434,11 +574,17 @@ PVars_heading = ["PatchID","X","Y","SubpatchNO","K","K StDev","N0","Natal Ground
 default_values = [1,1,1,1,100,0,100,1,0,"random","classvars/ClassVars.csv",0,0,0,0,0,0,0,"N",0,0,1,0,0,0,0,0,0,0,0,"N","N",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
 
+default_K = default_values[4]
+default_N0 = default_values[6]
+
 data = []
-for i in range(n):
+for i in range(len(Locations)):
     data.append(copy.deepcopy(default_values))
     data[-1][0] = i+1
 
+    if args.sticky_radius > 0:
+        data[-1][4] = default_K * Locations_Sizes[i]  # Scale K by the number of combined nodes
+        data[-1][6] = default_N0 * Locations_Sizes[i]  # Scale N0 by the number of combined nodes
 
 df = pd.DataFrame(columns = PVars_heading,data=data)
 
@@ -447,7 +593,7 @@ df["Y"] = df["Y"].astype(float)
 #PatchVars = pd.DataFrame(data=data,index=PVars_heading)
 
 #Set the locations:
-for i in range(n):
+for i in range(len(Locations)):
     df.loc[i,"X"] = Locations[i][0]
     df.loc[i,"Y"] = Locations[i][1]
 
