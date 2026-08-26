@@ -392,6 +392,8 @@ if args.type == "RGG":
         radius = args.ProbDist
         ProbMatrix = (DistMatrix <= radius).astype(float)
 
+        
+
     elif args.ProbDist == "Linear":
         ProbMatrix = 1 - (DistMatrix / DistMatrix.max())
 
@@ -428,7 +430,13 @@ non_empty = row_sums[:, 0] > 0
 
 ProbMatrix[non_empty] /= row_sums[non_empty]
 
+#If all zero for a row, make that connect to itself.
+if type(args.ProbDist) == float:
+    zero_rows = np.sum(ProbMatrix, axis=1) == 0
+    ProbMatrix[zero_rows, np.arange(ProbMatrix.shape[0])[zero_rows]] = 1
 
+
+"""
 ###############
 # Eigenvalues
 ###############
@@ -438,7 +446,7 @@ if args.type == "RGG":
     print("Effective number of mixing steps:", 1 / (1 - max(abs(Eigenvalues[1:]))))  # Exclude the first eigenvalue which is always 1
 
 ###############
-
+"""
 
 
 

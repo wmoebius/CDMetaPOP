@@ -5,6 +5,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import gc
+from scipy.optimize import curve_fit
 
 
 # ============================================================
@@ -23,9 +24,9 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--no-plot",
+    "--no-heatmaps",
     action="store_true",
-    help="Do not create heatmaps or plots"
+    help="Do not create heatmaps"
 )
 
 args = parser.parse_args()
@@ -394,7 +395,10 @@ def plot_landscape_average(
     generations,
     save_directory,
     title,
-    filename
+    filename,
+    graphtype = "Heterozygosity",
+    log=False,
+    annotations=False
 ):
 
     # --------------------------------------------------------
@@ -424,7 +428,6 @@ def plot_landscape_average(
     ax.plot(
         generations,
         landscape_average.values,
-        marker="o",
         linewidth=2
     )
 
@@ -444,10 +447,17 @@ def plot_landscape_average(
         title
     )
 
-    ax.set_ylim(
-        0,
-        1
-    )
+    if log:
+        ax.set_ylim(
+            1e-1,
+            1
+        )
+
+    else:
+        ax.set_ylim(
+            0,
+            150
+        )
 
     ax.set_xlim(
         generations[0],
@@ -457,6 +467,65 @@ def plot_landscape_average(
     ax.grid(
         alpha=0.3
     )
+
+    if log:
+        ax.set_yscale('log')
+
+    if graphtype == "Heterozygosity":
+        if annotations:
+            ##The expectation
+            x = [generations[int(len(generations)/3)],
+                generations[int(len(generations)/3*2)]]
+            y = [0.6* np.exp(-0.5 * x[0] / 100), 0.6* np.exp(-0.5 * x[1] / 100)]
+
+
+            ax.plot(
+                x,
+                y,
+                linewidth=2
+            )
+
+            plt.text(x[0],y[0],"Theory: Disconnected")
+
+            y = [0.6 * np.exp(-0.5 * x[0] / (20*100)), 0.6* np.exp(-0.5 * x[1] / (20*100))]
+
+            ax.plot(
+                x,
+                y,
+                linewidth=2
+            )
+
+            plt.text(x[0],y[0],"Theory: Fully Connected")
+
+
+
+            #The results
+            def fitfunc(x,a,b):
+                return b * np.exp(-x /a)
+
+            popt,pcov = curve_fit(fitfunc,
+                                np.asarray(generations),
+                                landscape_average.values)
+
+            a = popt[0]
+            b = popt[1]
+
+            print("Fitting params:",a,b)
+
+            plt.plot(generations,fitfunc(np.asarray(generations),a,b),
+                    linestyle='dashed')
+
+            plt.text(generations[0],
+                    landscape_average.values[0],
+                    r"$\lambda = 1 /(2 \times %0.3f)$"%(a/2))
+
+    if graphtype == "Number":
+        numberdata = np.asarray(landscape_average.values)
+        Mean = np.mean(numberdata[len(numberdata)//2:])
+
+        plt.text(generations[int(len(generations)/2)],
+                 50,
+                 "Mean = %0.3f"%(Mean))
 
     # ========================================================
     # SAVE
@@ -655,7 +724,7 @@ def process_run(run_directory):
     # PLOT INDIVIDUAL RUN HEATMAPS
     # ========================================================
 
-    if not args.no_plot:
+    if not args.no_heatmaps:
 
         print(
             "  Creating run heterozygosity heatmap..."
@@ -706,8 +775,25 @@ def process_run(run_directory):
         run_directory,
         f"Landscape-wide average heterozygosity\n"
         f"{run_directory.name}",
-        "heterozygosity_landscape_average"
+        "heterozygosity_landscape_average",
+        log=True
     )
+
+    print(
+        "  Creating run landscape-average "
+        "number of individuals..."
+    )
+
+    plot_landscape_average(
+        n_matrix,
+        generations,
+        run_directory,
+        f"Landscape-wide average population size\n"
+        f"{run_directory.name}",
+        "N_landscape_average",
+        graphtype="Number"
+    )
+
 
     # ========================================================
     # SAVE RUN DATA
@@ -952,6 +1038,24 @@ summed_n_matrix = (
 
 
 # ============================================================
+# AVERAGE NUMBER OF INDIVIDUALS ACROSS MC RUNS
+# ============================================================
+
+average_n_matrix = (
+    pd.concat(
+        all_n_matrices,
+        axis=0
+    )
+    .groupby(level=0)
+    .mean()
+    .reindex(
+        index=common_generations,
+        columns=common_patches
+    )
+)
+
+
+# ============================================================
 # SAVE SUMMED HETEROZYGOSITY
 # ============================================================
 
@@ -1080,7 +1184,7 @@ print(
 # PLOT AVERAGED HETEROZYGOSITY HEATMAP
 # ============================================================
 
-if not args.no_plot:
+if not args.no_heatmaps:
 
     print()
     print(
@@ -1106,7 +1210,7 @@ if not args.no_plot:
 # PLOT AVERAGED POPULATION-SIZE HEATMAP
 # ============================================================
 
-if not args.no_plot:
+if not args.no_heatmaps:
 
     print()
     print(
@@ -1132,7 +1236,7 @@ if not args.no_plot:
 # PLOT AVERAGED LANDSCAPE-WIDE HETEROZYGOSITY
 # ============================================================
 
-#if not args.no_plot:
+#if not args.no_heatmaps:
 
 print()
 print(
@@ -1146,9 +1250,20 @@ plot_landscape_average(
     output_dir,
     f"Landscape-wide average heterozygosity\n"
     f"{number_runs} Monte-Carlo runs",
-    "heterozygosity_AVERAGE_landscape_average"
+    "heterozygosity_AVERAGE_landscape_average",
+    log=True,
+    annotations=True
 )
 
+plot_landscape_average(
+    average_n_matrix,
+    common_generations,
+    output_dir,
+    f"Landscape-wide average population size\n"
+    f"{number_runs} Monte-Carlo runs",
+    "N_landscape_average",
+    graphtype="Number"
+)
 
 # ============================================================
 # CLEAN UP
