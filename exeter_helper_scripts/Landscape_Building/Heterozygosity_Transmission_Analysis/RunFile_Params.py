@@ -1,7 +1,11 @@
 import numpy as np
 
 #Running parameters
-repeats = 20
+batch_num = 3
+batch_size = 2
+
+
+repeats = int(batch_num * batch_size)
 
 
 #Landscape Parameters
