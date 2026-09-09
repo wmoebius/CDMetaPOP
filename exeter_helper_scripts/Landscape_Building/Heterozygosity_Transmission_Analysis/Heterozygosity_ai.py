@@ -1,2118 +1,1188 @@
-import pandas as pd
-
+import argparse
+import gc
+import re
 from pathlib import Path
 
-import re
-
-import argparse
-
 import matplotlib.pyplot as plt
-
 import numpy as np
-
-import gc
-
+import pandas as pd
 from scipy.optimize import curve_fit
 
 
-
-# ============================================================
-
+# ============================================================================
 # ARGUMENTS
-
-# ============================================================
+# ============================================================================
 
 parser = argparse.ArgumentParser(
-
-    description="Calculate population heterozygosity and population size for each patch across Monte-Carlo runs."
-
+    description="Calculate population heterozygosity and population size."
 )
 
 parser.add_argument(
-
     "-d",
-
     type=str,
-
     required=True,
-
-    help="Directory containing the Monte-Carlo run directories"
-
+    help="Directory containing the Monte-Carlo run directories",
 )
 
 parser.add_argument(
-
     "--no-heatmaps",
-
     action="store_true",
-
-    help="Do not create heatmaps"
-
+    help="Do not create heatmaps",
 )
 
 
-def main(d, no_heatmaps=True):
+# ============================================================================
+# BASIC FUNCTIONS
+# ============================================================================
 
+def find_runs(output_dir):
+    """Find Monte-Carlo run directories."""
 
+    runs = []
 
-
-    # ============================================================
-
-    # CHECK DIRECTORY
-
-    # ============================================================
-
-    output_dir = Path(d)
-
-    if not output_dir.exists():
-
-        raise FileNotFoundError(
-
-            f"Directory does not exist: {output_dir}"
-
-        )
-
-    if not output_dir.is_dir():
-
-        raise NotADirectoryError(
-
-            f"Not a directory: {output_dir}"
-
-        )
-
-
-
-    # ============================================================
-
-    # FIND MONTE-CARLO RUN DIRECTORIES
-
-    # ============================================================
-
-    run_directories = []
+    pattern = re.compile(
+        r"run(\d+)batch(\d+)mc(\d+)species(\d+)"
+    )
 
     for directory in output_dir.iterdir():
 
         if not directory.is_dir():
-
             continue
 
-        match = re.fullmatch(
-
-            r"run(\d+)batch(\d+)mc(\d+)species(\d+)",
-
-            directory.name
-
-        )
+        match = pattern.fullmatch(directory.name)
 
         if match:
+            mc = int(match.group(3))
+            runs.append((mc, directory))
 
-            run_number = int(match.group(1))
+    runs.sort(key=lambda x: x[0])
 
-            batch_number = int(match.group(2))
+    if not runs:
+        raise FileNotFoundError(
+            f"No Monte-Carlo run directories found in {output_dir}"
+        )
 
-            mc_number = int(match.group(3))
+    return runs
 
-            species_number = int(match.group(4))
 
-            run_directories.append(
+def find_ind_files(run_directory):
+    """Find ind<number>.csv files and sort by generation."""
 
-                (
+    files = []
 
-                    mc_number,
+    for file in run_directory.glob("ind*.csv"):
 
-                    directory
+        match = re.fullmatch(r"ind(\d+)\.csv", file.name)
 
+        if match:
+            generation = int(match.group(1))
+            files.append((generation, file))
+
+    files.sort(key=lambda x: x[0])
+
+    if not files:
+        raise FileNotFoundError(
+            f"No ind<number>.csv files found in {run_directory}"
+        )
+
+    return files
+
+
+def calculate_heterozygosity(df):
+    """Calculate individual heterozygosity across the two loci."""
+
+    locus_0 = (df["L0A0"] == 1) & (df["L0A1"] == 1)
+    locus_1 = (df["L1A0"] == 1) & (df["L1A1"] == 1)
+
+    df["Heterozygosity"] = (
+        locus_0.astype(float) +
+        locus_1.astype(float)
+    ) / 2.0
+
+    return df
+
+
+# ============================================================================
+# PLOTTING
+# ============================================================================
+
+def plot_heatmap(
+    matrix,
+    generations,
+    patches,
+    directory,
+    title,
+    filename,
+    colourbar_label,
+    vmin=0,
+    vmax=None,
+    decimals=2,
+):
+    """Create and save a heatmap."""
+
+    fig_width = max(8, len(patches))
+    fig_height = max(6, len(generations) * 0.5)
+
+    fig, ax = plt.subplots(
+        figsize=(fig_width, fig_height)
+    )
+
+    image = ax.imshow(
+        matrix.values,
+        aspect="auto",
+        interpolation="nearest",
+        origin="upper",
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+    ax.set_xlabel("Patch ID")
+    ax.set_ylabel("Generation")
+    ax.set_title(title)
+
+    ax.set_xticks(range(len(patches)))
+    ax.set_xticklabels(patches)
+
+    ax.set_yticks(range(len(generations)))
+    ax.set_yticklabels(generations)
+
+    for row in range(len(generations)):
+
+        for column in range(len(patches)):
+
+            value = matrix.iloc[row, column]
+
+            if pd.notna(value):
+
+                if decimals == 0:
+                    label = f"{value:.0f}"
+                else:
+                    label = f"{value:.{decimals}f}"
+
+                ax.text(
+                    column,
+                    row,
+                    label,
+                    ha="center",
+                    va="center",
+                    fontsize=8,
                 )
 
+    colourbar = fig.colorbar(image, ax=ax)
+    colourbar.set_label(colourbar_label)
+
+    if vmax == 1:
+        colourbar.set_ticks(
+            [0, 0.25, 0.5, 0.75, 1]
+        )
+
+    plt.tight_layout()
+
+    output_file = directory / f"{filename}.png"
+
+    plt.savefig(
+        output_file,
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    plt.close()
+
+    print(f"  Plot written to:\n    {output_file}")
+
+
+def plot_curves(
+    generations,
+    curves,
+    average_curve,
+    directory,
+    filename,
+    ylabel,
+    title,
+    log=False,
+    repeat_number=-1,
+):
+    """Plot every MC curve and the MC average."""
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    for curve in curves:
+        ax.plot(
+            generations,
+            curve,
+            alpha=0.35,
+        )
+
+    ax.plot(
+        generations,
+        average_curve,
+        linewidth=2,
+        color="k",
+        label="Average",
+    )
+
+    ax.set_xlabel("Generation")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+
+    ax.set_xlim(
+        generations[0],
+        generations[-1],
+    )
+
+    if log:
+        ax.set_yscale("log")
+
+    ax.grid(alpha=0.3)
+    ax.legend()
+
+    plt.tight_layout()
+
+    output_file = directory / f"{filename}.png"
+
+    plt.savefig(
+        output_file,
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    if repeat_number != -1:
+        output_file = directory / "../../../../" / f"{filename}_Landscape_{repeat_number}.png"
+        plt.savefig(
+                output_file,
+                dpi=300,
+                bbox_inches="tight",
             )
 
+    plt.close()
+
+    print(f"  Plot written to:\n    {output_file}")
 
 
-    run_directories.sort(
+def fit_heterozygosity_curve(
+    generations,
+    curve,
+    directory,
+    title,
+    filename,
+    repeat_number=-1
+):
+    """Fit b * exp(-x / (2a)) to the averaged curve."""
 
-        key=lambda x: x[0]
+    generations = np.asarray(
+        generations,
+        dtype=float,
+    )
 
+    curve = np.asarray(
+        curve,
+        dtype=float,
+    )
+
+    def fit_function(x, a, b):
+        return b * np.exp(-x / (2 * a))
+
+    valid = (
+        np.isfinite(generations)
+        & np.isfinite(curve)
+        & (curve > 0)
+    )
+
+    popt, pcov = curve_fit(
+        fit_function,
+        generations[valid],
+        curve[valid],
+    )
+
+    a, b = popt
+
+    errors = np.sqrt(
+        np.diag(pcov)
+    )
+
+    a_error = errors[0]
+    b_error = errors[1]
+
+    fig, ax = plt.subplots(
+        figsize=(10, 6)
+    )
+
+    ax.plot(
+        generations,
+        curve,
+        linewidth=2,
+        color="k",
+        label="Average",
+    )
+
+    ax.plot(
+        generations,
+        fit_function(
+            generations,
+            a,
+            b,
+        ),
+        linestyle="dashed",
+        label=(
+            f"Fit: a = {a:.3f} ± {a_error:.3f}"
+        ),
+    )
+
+    ax.set_xlabel("Generation")
+    ax.set_ylabel("Mean heterozygosity")
+    ax.set_title(title)
+
+    ax.set_xlim(
+        generations[0],
+        generations[-1],
+    )
+
+    ax.set_yscale("log")
+    ax.grid(alpha=0.3)
+    ax.legend()
+
+    plt.tight_layout()
+
+    output_file = directory / f"{filename}.png"
+
+    plt.savefig(
+        output_file,
+        dpi=300,
+        bbox_inches="tight",
     )
 
 
+    if repeat_number != -1:
+        output_file = directory / "../../../../" / f"{filename}_Landscape_{repeat_number}.png"
+        plt.savefig(
+                output_file,
+                dpi=300,
+                bbox_inches="tight",
+            )
+    
 
-    if len(run_directories) == 0:
+    plt.close()
 
-        raise FileNotFoundError(
+    print(f"  Plot written to:\n    {output_file}")
 
-            f"No Monte-Carlo run directories found in "
-
-            f"{output_dir}"
-
-        )
+    return a, a_error, b, b_error
 
 
+# ============================================================================
+# PROCESS ONE MC RUN
+# ============================================================================
 
-    print()
+def process_run(run_directory, no_heatmaps):
 
     print(
-
-        f"Found {len(run_directories)} Monte-Carlo runs."
-
+        f"\n{'=' * 48}\n"
+        f"Processing: {run_directory.name}\n"
+        f"{'=' * 48}"
     )
 
-    for mc_number, directory in run_directories:
-
-        print(
-
-            f"  MC {mc_number}: {directory.name}"
-
-        )
-
-
-
-    # ============================================================
-
-    # FIND IND FILES
-
-    # ============================================================
-
-    def find_ind_files(run_directory):
-
-        ind_files = []
-
-        for file in run_directory.glob("ind*.csv"):
-
-            match = re.fullmatch(
-                r"ind(\d+)\.csv",
-                file.name
-            )
-
-            if match:
-
-                generation = int(match.group(1))
-
-                ind_files.append(
-                    (
-                        generation,
-                        file
-                    )
-                )
-
-        ind_files.sort(
-            key=lambda x: x[0]
-        )
-
-        if len(ind_files) == 0:
-
-            raise FileNotFoundError(
-                f"No ind<number>.csv files found in "
-                f"{run_directory}"
-            )
-
-        return ind_files
-
-
-
-    # ============================================================
-
-    # CALCULATE INDIVIDUAL HETEROZYGOSITY
-
-    # ============================================================
-
-    def calculate_individual_heterozygosity(df):
-
-        # --------------------------------------------------------
-
-        # Locus 0
-
-        #
-
-        # Heterozygous if:
-
-        # L0A0 = 1
-
-        # L0A1 = 1
-
-        # --------------------------------------------------------
-
-        heterozygous_L0 = (
-
-            (df["L0A0"] == 1) &
-
-            (df["L0A1"] == 1)
-
-        )
-
-        # --------------------------------------------------------
-
-        # Locus 1
-
-        #
-
-        # Heterozygous if:
-
-        # L1A0 = 1
-
-        # L1A1 = 1
-
-        # --------------------------------------------------------
-
-        heterozygous_L1 = (
-
-            (df["L1A0"] == 1) &
-
-            (df["L1A1"] == 1)
-
-        )
-
-        # --------------------------------------------------------
-
-        # Individual heterozygosity
-
-        #
-
-        # Each heterozygous locus contributes 1.
-
-        # Divide by number of loci.
-
-        # --------------------------------------------------------
-
-        df["Heterozygosity"] = (
-
-            heterozygous_L0.astype(float) +
-
-            heterozygous_L1.astype(float)
-
-        ) / 2.0
-
-        return df
-
-
-
-    # ============================================================
-
-    # FIND ALL PATCHES IN A RUN
-
-    # ============================================================
-
-    def find_all_patches(ind_data, generations):
-
-        all_patches = set()
-
-        for generation in generations:
-
-            df = ind_data[generation]
-
-            for patch in df["PatchID"].unique():
-
-                all_patches.add(patch)
-
-        return sorted(all_patches)
-
-
-
-    # ============================================================
-
-    # PLOT HEATMAP
-
-    # ============================================================
-
-    def plot_heatmap(
-
-        matrix,
-
-        generations,
-
-        all_patches,
-
-        save_directory,
-
-        title,
-
-        filename,
-
-        colourbar_label,
-
-        vmin=0,
-
-        vmax=None,
-
-        decimals=2
-
-    ):
-
-        fig_width = max(
-
-            8,
-
-            len(all_patches) * 1.0
-
-        )
-
-        fig_height = max(
-
-            6,
-
-            len(generations) * 0.5
-
-        )
-
-        fig, ax = plt.subplots(
-
-            figsize=(
-
-                fig_width,
-
-                fig_height
-
-            )
-
-        )
-
-        # ========================================================
-
-        # COLOUR = MATRIX VALUE
-
-        # ========================================================
-
-        image = ax.imshow(
-
-            matrix.values,
-
-            aspect="auto",
-
-            interpolation="nearest",
-
-            origin="upper",
-
-            vmin=vmin,
-
-            vmax=vmax
-
-        )
-
-        # ========================================================
-
-        # AXES
-
-        # ========================================================
-
-        ax.set_xlabel(
-
-            "Patch ID"
-
-        )
-
-        ax.set_ylabel(
-
-            "Generation"
-
-        )
-
-        ax.set_title(
-
-            title
-
-        )
-
-        ax.set_xticks(
-
-            range(
-
-                len(all_patches)
-
-            )
-
-        )
-
-        ax.set_xticklabels(
-
-            all_patches
-
-        )
-
-        ax.set_yticks(
-
-            range(
-
-                len(generations)
-
-            )
-
-        )
-
-        ax.set_yticklabels(
-
-            generations
-
-        )
-
-        # ========================================================
-
-        # CELL LABELS
-
-        # ========================================================
-
-        for row_number in range(
-
-            len(generations)
-
+    ind_files = find_ind_files(run_directory)
+
+    generations = [
+        generation
+        for generation, _ in ind_files
+    ]
+
+    print(
+        f"Generations: "
+        f"{generations[0]} -> {generations[-1]}"
+    )
+
+    # We build the patch list as we process the files.
+    # Results are temporarily stored by patch ID.
+    # We build the patch list as we process the files.
+    patch_data = set()
+
+    heterozygosity_results = {}
+    n_results = {}
+
+    # Process each generation ONCE
+    for generation, file in ind_files:
+
+        print(f"  Calculating generation {generation}")
+
+        h_sum = {}
+        h_count = {}
+
+        for chunk in pd.read_csv(
+            file,
+            usecols=[
+                "PatchID",
+                "L0A0",
+                "L0A1",
+                "L1A0",
+                "L1A1",
+            ],
+            dtype={
+                "PatchID": np.int32,
+                "L0A0": np.int8,
+                "L0A1": np.int8,
+                "L1A0": np.int8,
+                "L1A1": np.int8,
+            },
+            chunksize=100_000,
         ):
 
-            for column_number in range(
+            locus_0 = (
+                (chunk["L0A0"] == 1)
+                & (chunk["L0A1"] == 1)
+            )
 
-                len(all_patches)
+            locus_1 = (
+                (chunk["L1A0"] == 1)
+                & (chunk["L1A1"] == 1)
+            )
 
-            ):
+            individual_h = (
+                locus_0.astype(np.float32)
+                + locus_1.astype(np.float32)
+            ) / 2.0
 
-                value = (
+            temp = pd.DataFrame({
+                "PatchID": chunk["PatchID"].to_numpy(),
+                "H": individual_h.to_numpy(),
+            })
 
-                    matrix.iloc[
+            grouped = temp.groupby("PatchID")["H"].agg(
+                ["sum", "count"]
+            )
 
-                        row_number,
+            for patch, values in grouped.iterrows():
 
-                        column_number
-
-                    ]
-
+                h_sum[patch] = (
+                    h_sum.get(patch, 0.0)
+                    + values["sum"]
                 )
 
-                if not pd.isna(value):
-
-                    if decimals == 0:
-
-                        label = f"{value:.0f}"
-
-                    else:
-
-                        label = f"{value:.{decimals}f}"
-
-                    ax.text(
-
-                        column_number,
-
-                        row_number,
-
-                        label,
-
-                        ha="center",
-
-                        va="center",
-
-                        fontsize=8
-
-                    )
-
-        # ========================================================
-
-        # COLOURBAR
-
-        # ========================================================
-
-        colourbar = fig.colorbar(
-
-            image,
-
-            ax=ax
-
-        )
-
-        colourbar.set_label(
-
-            colourbar_label
-
-        )
-
-        if vmax == 1:
-
-            colourbar.set_ticks(
-
-                [
-
-                    0,
-
-                    0.25,
-
-                    0.5,
-
-                    0.75,
-
-                    1.0
-
-                ]
-
-            )
-
-        # ========================================================
-
-        # SAVE
-
-        # ========================================================
-
-        plt.tight_layout()
-
-        output_file = (
-
-            save_directory /
-
-            f"{filename}.png"
-
-        )
-
-        plt.savefig(
-
-            output_file,
-
-            dpi=300,
-
-            bbox_inches="tight"
-
-        )
-
-        plt.close()
-
-        print(
-
-            f"  Heatmap written to:"
-
-        )
-
-        print(
-
-            f"    {output_file}"
-
-        )
-
-
-
-    # ============================================================
-
-    # PLOT LANDSCAPE-WIDE AVERAGE HETEROZYGOSITY
-
-    # ============================================================
-    def plot_landscape_average(
-
-        heterozygosity_matrix,
-
-        generations,
-
-        save_directory,
-
-        title,
-
-        filename,
-
-        graphtype = "Heterozygosity",
-
-        log=False,
-
-        annotations=False
-
-    ):
-
-        # --------------------------------------------------------
-
-        # Calculate the mean heterozygosity across patches for
-
-        # each generation.
-
-        #
-
-        # Empty patches contain NaN heterozygosity and are
-
-        # therefore excluded from the mean.
-
-        # --------------------------------------------------------
-
-        landscape_average = (
-
-            heterozygosity_matrix
-
-            .mean(
-
-                axis=1,
-
-                skipna=True
-
-            )
-
-        )
-
-        # ========================================================
-
-        # CREATE FIGURE
-
-        # ========================================================
-
-        fig, ax = plt.subplots(
-
-            figsize=(10, 6)
-
-        )
-
-        ax.plot(
-
-            generations,
-
-            landscape_average.values,
-
-            linewidth=2
-
-        )
-
-        # ========================================================
-
-        # AXES
-
-        # ========================================================
-
-        ax.set_xlabel(
-
-            "Generation"
-
-        )
-
-        ax.set_ylabel(
-
-            "Mean heterozygosity"
-
-        )
-
-        ax.set_title(
-
-            title
-
-        )
-
-        if log:
-
-            ax.set_ylim(
-
-                1e-1,
-
-                1
-
-            )
-
-        else:
-
-            ax.set_ylim(
-
-                0,
-
-                150
-
-            )
-
-        ax.set_xlim(
-
-            generations[0],
-
-            generations[-1]
-
-        )
-
-        ax.grid(
-
-            alpha=0.3
-
-        )
-
-        if log:
-
-            ax.set_yscale('log')
-
-        if graphtype == "Heterozygosity":
-
-            if annotations:
-
-                ##The expectation
-
-                x = [generations[int(len(generations)/3)],
-
-                    generations[int(len(generations)/3*2)]]
-
-                y = [0.6* np.exp(-0.5 * x[0] / 100), 0.6* np.exp(-0.5 * x[1] / 100)]
-
-
-
-                ax.plot(
-
-                    x,
-
-                    y,
-
-                    linewidth=2
-
+                h_count[patch] = (
+                    h_count.get(patch, 0)
+                    + values["count"]
                 )
 
-                plt.text(x[0],y[0],"Theory: Disconnected")
-
-                y = [0.6 * np.exp(-0.5 * x[0] / (20*100)), 0.6* np.exp(-0.5 * x[1] / (20*100))]
-
-                ax.plot(
-
-                    x,
-
-                    y,
-
-                    linewidth=2
-
-                )
-
-                plt.text(x[0],y[0],"Theory: Fully Connected")
-
-
-
-
-
-                #The results
-
-                def fitfunc(x,a,b):
-
-                    return b * np.exp(-x /a)
-
-                popt,pcov = curve_fit(fitfunc,
-
-                                    np.asarray(generations),
-
-                                    landscape_average.values)
-
-                a = popt[0]
-
-                b = popt[1]
-
-                print("Fitting params:",a,b)
-
-                plt.plot(generations,fitfunc(np.asarray(generations),a,b),
-
-                        linestyle='dashed')
-
-                plt.text(generations[0],
-
-                        landscape_average.values[0],
-
-                        r"$\lambda = 1 /(2 \times %0.3f)$"%(a/2))
-
-        if graphtype == "Number":
-
-            numberdata = np.asarray(landscape_average.values)
-
-            Mean = np.mean(numberdata[len(numberdata)//2:])
-
-            plt.text(generations[int(len(generations)/2)],
-
-                     50,
-
-                     "Mean = %0.3f"%(Mean))
-
-        # ========================================================
-
-        # SAVE
-
-        # ========================================================
-
-        plt.tight_layout()
-
-        output_file = (
-
-            save_directory /
-
-            f"{filename}.png"
-
-        )
-
-        plt.savefig(
-
-            output_file,
-
-            dpi=300,
-
-            bbox_inches="tight"
-
-        )
-
-        plt.close()
-
-        print(
-
-            f"  Landscape-average heterozygosity plot written to:"
-
-        )
-
-        print(
-
-            f"    {output_file}"
-
-        )
-        #Return the output
-        if (graphtype == "Heterozygosity") and annotations:
-            return a
-
-    # ============================================================
-
-    # PROCESS ONE MONTE-CARLO RUN
-
-    # ============================================================
-
-    def process_run(run_directory):
-
-        print()
-
-        print("================================================")
-
-        print(
-
-            f"Processing: {run_directory.name}"
-
-        )
-
-        print("================================================")
-
-        # ========================================================
-
-        # FIND IND FILES
-
-        # ========================================================
-
-        ind_files = find_ind_files(
-
-            run_directory
-
-        )
-
-        generations = []
-
-        for generation, file in ind_files:
-
-            generations.append(
-
-                generation
-
-            )
-
-        print(
-
-            f"Generations: {generations[0]} -> "
-
-            f"{generations[-1]}"
-
-        )
-
-        # ========================================================
-
-        # READ IND FILES
-
-        # ========================================================
-
-        ind_data = {}
-
-        for generation, file in ind_files:
-
-            print(
-
-                f"  Reading generation {generation}"
-
-            )
-
-            df = pd.read_csv(file)
-
-            # ----------------------------------------------------
-
-            # Calculate individual heterozygosity
-
-            # ----------------------------------------------------
-
-            df = calculate_individual_heterozygosity(
-
-                df
-
-            )
-
-            ind_data[generation] = df
-
-        # ========================================================
-
-        # FIND PATCHES
-
-        # ========================================================
-
-        all_patches = find_all_patches(
-
-            ind_data,
-
-            generations
-
-        )
-
-        print(
-
-            f"  Found {len(all_patches)} patches."
-
-        )
-
-        # ========================================================
-
-        # CALCULATE PATCH HETEROZYGOSITY AND N
-
-        # ========================================================
-
-        results = []
-
-        for generation in generations:
-
-            df = ind_data[generation]
-
-            print(
-
-                f"  Calculating generation {generation}"
-
-            )
-
-            # ----------------------------------------------------
-
-            # Calculate mean heterozygosity for each patch
-
-            # ----------------------------------------------------
-
-            patch_means = (
-
-                df.groupby("PatchID")["Heterozygosity"]
-
-                .mean()
-
-            )
-
-            for patch in all_patches:
-
-                if patch in patch_means.index:
-
-                    heterozygosity = (
-
-                        patch_means.loc[patch]
-
-                    )
-
-                    number_individuals = (
-
-                        df["PatchID"] == patch
-
-                    ).sum()
-
-                else:
-
-                    # No individuals in this patch.
-
-                    #
-
-                    # Heterozygosity is undefined.
-
-                    # N is zero.
-
-                    heterozygosity = np.nan
-
-                    number_individuals = 0
-
-                results.append(
-
-                    {
-
-                        "Generation": generation,
-
-                        "PatchID": patch,
-
-                        "Heterozygosity": heterozygosity,
-
-                        "N": number_individuals
-
-                    }
-
-                )
-
-        results_df = pd.DataFrame(
-
-            results
-
-        )
-
-        # ========================================================
-
-        # CREATE HETEROZYGOSITY MATRIX
-
-        # ========================================================
-
-        heterozygosity_matrix = (
-
-            results_df
-
-            .pivot(
-
-                index="Generation",
-
-                columns="PatchID",
-
-                values="Heterozygosity"
-
-            )
-
-            .reindex(
-
-                index=generations,
-
-                columns=all_patches
-
-            )
-
-        )
-
-        # ========================================================
-
-        # CREATE N MATRIX
-
-        # ========================================================
-
-        n_matrix = (
-
-            results_df
-
-            .pivot(
-
-                index="Generation",
-
-                columns="PatchID",
-
-                values="N"
-
-            )
-
-            .reindex(
-
-                index=generations,
-
-                columns=all_patches
-
-            )
-
-            .fillna(0)
-
-        )
-
-        # ========================================================
-
-        # PLOT INDIVIDUAL RUN HEATMAPS
-
-        # ========================================================
-
-        if not no_heatmaps:
-
-            print(
-
-                "  Creating run heterozygosity heatmap..."
-
-            )
-
-            plot_heatmap(
-
-                heterozygosity_matrix,
-
-                generations,
-
-                all_patches,
-
-                run_directory,
-
-                f"Heterozygosity\n{run_directory.name}",
-
-                "heterozygosity_heatmap",
-
-                colourbar_label="Mean heterozygosity",
-
-                vmin=0,
-
-                vmax=1,
-
-                decimals=2
-
-            )
-
-            print(
-
-                "  Creating run population-size heatmap..."
-
-            )
-
-            plot_heatmap(
-
-                n_matrix,
-
-                generations,
-
-                all_patches,
-
-                run_directory,
-
-                f"Number of individuals\n{run_directory.name}",
-
-                "N_heatmap",
-
-                colourbar_label="Number of individuals",
-
-                vmin=0,
-
-                vmax=None,
-
-                decimals=0
-
-            )
-
-        # ----------------------------------------------------
-
-        # Separate landscape-average plot
-
-        # ----------------------------------------------------
-
-        print(
-
-            "  Creating run landscape-average "
-
-            "heterozygosity plot..."
-
-        )
-
-        plot_landscape_average(
-
+        heterozygosity_results[generation] = {
+            patch: h_sum[patch] / h_count[patch]
+            for patch in h_sum
+        }
+
+        n_results[generation] = h_count
+
+        patch_data.update(h_sum.keys())
+
+    patches = sorted(patch_data)
+
+    print(f"  Found {len(patches)} patches.")
+
+    # Build result arrays
+    heterozygosity_array = np.full(
+        (len(generations), len(patches)),
+        np.nan,
+        dtype=np.float32,
+    )
+
+    n_array = np.zeros(
+        (len(generations), len(patches)),
+        dtype=np.float32,
+    )
+
+    patch_index = {
+        patch: i
+        for i, patch in enumerate(patches)
+    }
+
+    for row, generation in enumerate(generations):
+
+        for patch, value in heterozygosity_results[
+            generation
+        ].items():
+
+            heterozygosity_array[
+                row,
+                patch_index[patch]
+            ] = value
+
+        for patch, value in n_results[
+            generation
+        ].items():
+
+            n_array[
+                row,
+                patch_index[patch]
+            ] = value
+
+    heterozygosity_matrix = pd.DataFrame(
+        heterozygosity_array,
+        index=generations,
+        columns=patches,
+    )
+
+    n_matrix = pd.DataFrame(
+        n_array,
+        index=generations,
+        columns=patches,
+    )
+
+    # Landscape curves
+    heterozygosity_curve = (
+        heterozygosity_matrix
+        .mean(axis=1, skipna=True)
+        .to_numpy()
+    )
+
+    population_curve = (
+        n_matrix
+        .mean(axis=1)
+        .to_numpy()
+    )
+
+    # Heatmaps
+    if not no_heatmaps:
+
+        plot_heatmap(
             heterozygosity_matrix,
-
-            generations,
-
-            run_directory,
-
-            f"Landscape-wide average heterozygosity\n"
-
-            f"{run_directory.name}",
-
-            "heterozygosity_landscape_average",
-
-            log=True
-
+            "Heterozygosity",
+            run_directory / "heterozygosity.png",
         )
 
-        print(
-
-            "  Creating run landscape-average "
-
-            "number of individuals..."
-
-        )
-
-        plot_landscape_average(
-
+        plot_heatmap(
             n_matrix,
+            "Population Size",
+            run_directory / "N.png",
+        )
 
+    # Save matrices
+    heterozygosity_matrix.to_csv(
+        run_directory / "heterozygosity.csv"
+    )
+
+    n_matrix.to_csv(
+        run_directory / "N.csv"
+    )
+
+    print(
+        f"  Data written to {run_directory}"
+    )
+
+    return (
+        heterozygosity_matrix,
+        n_matrix,
+        heterozygosity_curve,
+        population_curve,
+        generations,
+        patches,
+    )
+
+
+
+# ============================================================================
+# SAVE COLLATED DATA
+# ============================================================================
+
+def save_data(
+    output_dir,
+    generations,
+    patches,
+    heterozygosity_curves,
+    average_heterozygosity_curve,
+    population_curves,
+    average_population_curve,
+    average_heterozygosity_matrix,
+    average_n_matrix,
+):
+    """Save all data required for later analysis."""
+
+    output_file = output_dir / "Data.npz"
+
+    np.savez_compressed(
+        output_file,
+        generations=np.asarray(generations),
+        patches=np.asarray(patches),
+        heterozygosity_curves=np.asarray(
+            heterozygosity_curves
+        ),
+        average_heterozygosity_curve=np.asarray(
+            average_heterozygosity_curve
+        ),
+        population_curves=np.asarray(
+            population_curves
+        ),
+        average_population_curve=np.asarray(
+            average_population_curve
+        ),
+        average_heterozygosity_matrix=np.asarray(
+            average_heterozygosity_matrix
+        ),
+        average_n_matrix=np.asarray(
+            average_n_matrix
+        ),
+    )
+
+    print(
+        f"\nCollated data written to:\n"
+        f"  {output_file}"
+    )
+
+
+# ============================================================================
+# ANALYSE EXISTING DATA.NPZ
+# ============================================================================
+
+def analyse_npz(
+    output_dir,
+    no_heatmaps,
+    repeat_number=-1
+):
+    """Analyse Data.npz without reading ind*.csv files."""
+
+    data_file = output_dir / "Data.npz"
+
+    print(
+        f"\nFound existing {data_file}"
+    )
+
+    print(
+        "Using Data.npz; "
+        "ind*.csv files will NOT be read."
+    )
+
+    with np.load(
+        data_file,
+        allow_pickle=True,
+    ) as data:
+
+        generations = data[
+            "generations"
+        ]
+
+        patches = data[
+            "patches"
+        ].tolist()
+
+        heterozygosity_curves = data[
+            "heterozygosity_curves"
+        ]
+
+        average_heterozygosity_curve = data[
+            "average_heterozygosity_curve"
+        ]
+
+        population_curves = data[
+            "population_curves"
+        ]
+
+        average_population_curve = data[
+            "average_population_curve"
+        ]
+
+        average_heterozygosity_matrix = pd.DataFrame(
+            data["average_heterozygosity_matrix"],
+            index=generations,
+            columns=patches,
+        )
+
+        average_n_matrix = pd.DataFrame(
+            data["average_n_matrix"],
+            index=generations,
+            columns=patches,
+        )
+
+    number_runs = len(
+        heterozygosity_curves
+    )
+
+    print(
+        f"  Loaded {number_runs} heterozygosity curves."
+    )
+
+    print(heterozygosity_curves)
+
+    # ------------------------------------------------------------------------
+    # Heatmaps
+    # ------------------------------------------------------------------------
+
+    if not no_heatmaps:
+
+        plot_heatmap(
+            average_heterozygosity_matrix,
             generations,
-
-            run_directory,
-
-            f"Landscape-wide average population size\n"
-
-            f"{run_directory.name}",
-
-            "N_landscape_average",
-
-            graphtype="Number"
-
+            patches,
+            output_dir,
+            f"AVERAGED population heterozygosity\n"
+            f"{number_runs} Monte-Carlo runs",
+            "heterozygosity_AVERAGE",
+            "Mean heterozygosity",
+            vmin=0,
+            vmax=1,
+            decimals=2,
         )
 
-
-
-        # ========================================================
-
-        # SAVE RUN DATA
-
-        # ========================================================
-
-        run_output = (
-
-            run_directory /
-
-            "heterozygosity.csv"
-
-        )
-
-        results_df.to_csv(
-
-            run_output,
-
-            index=False
-
-        )
-
-        print(
-
-            f"  Heterozygosity data written to:"
-
-        )
-
-        print(
-
-            f"    {run_output}"
-
-        )
-
-        # ========================================================
-
-        # SAVE N DATA
-
-        # ========================================================
-
-        n_output = (
-
-            run_directory /
-
-            "N.csv"
-
-        )
-
-        n_matrix.to_csv(
-
-            n_output
-
-        )
-
-        print(
-
-            f"  Population-size data written to:"
-
-        )
-
-        print(
-
-            f"    {n_output}"
-
-        )
-
-        # ========================================================
-
-        # MEMORY CLEANUP
-
-        # ========================================================
-
-        del ind_data
-
-        gc.collect()
-
-        return (
-
-            heterozygosity_matrix.copy(),
-
-            n_matrix.copy(),
-
+        plot_heatmap(
+            average_n_matrix,
             generations,
-
-            all_patches
-
+            patches,
+            output_dir,
+            f"AVERAGED number of individuals\n"
+            f"{number_runs} Monte-Carlo runs",
+            "N_AVERAGE",
+            "Mean number of individuals",
+            vmin=0,
+            vmax=None,
+            decimals=1,
         )
 
+    # ------------------------------------------------------------------------
+    # Curves
+    # ------------------------------------------------------------------------
+
+    a, a_error, b, b_error = fit_heterozygosity_curve(
+        generations,
+        average_heterozygosity_curve,
+        output_dir,
+        f"Landscape-wide average heterozygosity\n"
+        f"{number_runs} Monte-Carlo runs",
+        "heterozygosity_AVERAGE_landscape_average",
+        repeat_number=repeat_number
+    )
+
+    plot_curves(
+        generations,
+        heterozygosity_curves,
+        average_heterozygosity_curve,
+        output_dir,
+        "heterozygosity_ALL_curves",
+        "Mean heterozygosity",
+        f"Landscape-wide heterozygosity\n"
+        f"{number_runs} Monte-Carlo runs",
+        log=True,
+        repeat_number=repeat_number
+    )
+
+    plot_curves(
+        generations,
+        population_curves,
+        average_population_curve,
+        output_dir,
+        "N_landscape_average",
+        "Mean number of individuals",
+        f"Landscape-wide population size\n"
+        f"{number_runs} Monte-Carlo runs",
+        repeat_number=repeat_number
+    )
+
+    # ------------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------------
+
+    print("\n" + "=" * 48)
+    print("Data.npz analysis complete")
+    print("=" * 48)
+
+    print(f"a = {a:.6f}")
+    print(f"Error on a = {a_error:.6f}")
+    print(f"b = {b:.6f}")
+    print(f"Error on b = {b_error:.6f}")
+
+    print(
+        f"\nLoaded heterozygosity curves: "
+        f"{len(heterozygosity_curves)}"
+    )
+
+    print(
+        f"Curve length: "
+        f"{len(average_heterozygosity_curve)}"
+    )
+
+    return a
 
 
-    # ============================================================
+# ============================================================================
+# MAIN
+# ============================================================================
 
-    # PROCESS ALL MONTE-CARLO RUNS
+def main(d, no_heatmaps=False,repeat_number=-1):
 
-    # ============================================================
+    output_dir = Path(d)
 
-    all_heterozygosity_matrices = []
+    if not output_dir.exists():
+        raise FileNotFoundError(
+            f"Directory does not exist: {output_dir}"
+        )
 
-    all_n_matrices = []
+    if not output_dir.is_dir():
+        raise NotADirectoryError(
+            f"Not a directory: {output_dir}"
+        )
+
+    # ------------------------------------------------------------------------
+    # If Data.npz already exists, analyse it directly.
+    # ------------------------------------------------------------------------
+
+    data_file = output_dir / "Data.npz"
+
+    if data_file.exists():
+        return analyse_npz(
+            output_dir,
+            no_heatmaps,
+            repeat_number=repeat_number
+        )
+
+    # ------------------------------------------------------------------------
+    # Find MC runs
+    # ------------------------------------------------------------------------
+
+    run_directories = find_runs(
+        output_dir
+    )
+
+    print(
+        f"\nFound {len(run_directories)} "
+        f"Monte-Carlo runs."
+    )
+
+    for mc, directory in run_directories:
+        print(
+            f"  MC {mc}: {directory.name}"
+        )
+
+    # ------------------------------------------------------------------------
+    # Storage for MC results
+    # ------------------------------------------------------------------------
+
+    heterozygosity_matrices = []
+    n_matrices = []
+
+    heterozygosity_curves = []
+    population_curves = []
 
     common_generations = None
-
     common_patches = None
 
+    # ------------------------------------------------------------------------
+    # Process each MC run
+    # ------------------------------------------------------------------------
 
-
-    for mc_number, run_directory in run_directories:
+    for mc, run_directory in run_directories:
 
         (
-
-            heterozygosity_matrix,
-
+            h_matrix,
             n_matrix,
-
+            h_curve,
+            n_curve,
             generations,
-
-            patches
-
+            patches,
         ) = process_run(
-
-            run_directory
-
+            run_directory,
+            no_heatmaps,
         )
 
-        # ========================================================
-
-        # MAKE SURE ALL RUNS HAVE SAME DIMENSIONS
-
-        # ========================================================
+        # Check dimensions
 
         if common_generations is None:
 
             common_generations = generations
-
             common_patches = patches
 
         else:
 
             if generations != common_generations:
-
                 raise ValueError(
-
-                    f"Generation mismatch between "
-
-                    f"Monte-Carlo runs.\n"
-
+                    "Generation mismatch between "
+                    f"MC runs.\n"
                     f"Expected: {common_generations}\n"
-
                     f"Found: {generations}\n"
-
                     f"Problem run: {run_directory}"
-
                 )
 
             if patches != common_patches:
-
                 raise ValueError(
-
-                    f"Patch mismatch between "
-
-                    f"Monte-Carlo runs.\n"
-
+                    "Patch mismatch between "
+                    f"MC runs.\n"
                     f"Expected: {common_patches}\n"
-
                     f"Found: {patches}\n"
-
                     f"Problem run: {run_directory}"
-
                 )
 
-        # ========================================================
+        # Store results
 
-        # STORE SMALL MATRICES
-
-        # ========================================================
-
-        all_heterozygosity_matrices.append(
-
-            heterozygosity_matrix
-
+        heterozygosity_matrices.append(
+            h_matrix
         )
 
-        all_n_matrices.append(
-
+        n_matrices.append(
             n_matrix
-
         )
 
-        del heterozygosity_matrix
+        # IMPORTANT:
+        # These are now actually populated.
 
-        del n_matrix
+        heterozygosity_curves.append(
+            h_curve
+        )
 
-        gc.collect()
-
-
-
-    # ============================================================
-
-    # COMBINE MONTE-CARLO RUNS
-
-    # ============================================================
-
-    print()
-
-    print("================================================")
-
-    print("Combining Monte-Carlo runs...")
-
-    print("================================================")
+        population_curves.append(
+            n_curve
+        )
 
     number_runs = len(
-
-        all_heterozygosity_matrices
-
+        heterozygosity_matrices
     )
 
+    # =========================================================================
+    # COMBINE MC RUNS
+    # =========================================================================
 
-
-    # ============================================================
-
-    # SUMMED HETEROZYGOSITY
-
-    # ============================================================
-
-    summed_heterozygosity_matrix = (
-
-        pd.concat(
-
-            all_heterozygosity_matrices,
-
-            axis=0
-
-        )
-
-        .groupby(level=0)
-
-        .sum(
-
-            skipna=True
-
-        )
-
+    print(
+        "\n" + "=" * 48 +
+        "\nCombining Monte-Carlo runs...\n" +
+        "=" * 48
     )
 
-
-
-    # ============================================================
-
-    # AVERAGE HETEROZYGOSITY ACROSS MC RUNS
-
-    # ============================================================
-
-    average_heterozygosity_matrix = (
-
-        pd.concat(
-
-            all_heterozygosity_matrices,
-
-            axis=0
-
-        )
-
-        .groupby(level=0)
-
-        .mean(
-
-            skipna=True
-
-        )
-
-        .reindex(
-
-            index=common_generations,
-
-            columns=common_patches
-
-        )
-
-    )
-
-
-
-    # ============================================================
-
-    # NUMBER OF RUNS CONTRIBUTING TO EACH HETEROZYGOSITY CELL
-
-    # ============================================================
-
-    number_contributing_runs = (
-
-        pd.concat(
-
-            [
-
-                matrix.notna().astype(int)
-
-                for matrix in all_heterozygosity_matrices
-
-            ],
-
-            axis=0
-
-        )
-
-        .groupby(level=0)
-
-        .sum()
-
-        .reindex(
-
-            index=common_generations,
-
-            columns=common_patches
-
-        )
-
-    )
-
-
-
-    # ============================================================
-
-    # AVERAGE NUMBER OF INDIVIDUALS ACROSS MC RUNS
-
-    # ============================================================
-
+    # ------------------------------------------------------------------------
+    # Average heterozygosity matrix
     #
+    # NaN = empty patch.
+    # Empty patches therefore do not contribute.
+    # ------------------------------------------------------------------------
 
-    # Empty patches contribute N = 0.
+    h_stack = np.stack(
+        [
+            matrix.to_numpy(dtype=float)
+            for matrix in heterozygosity_matrices
+        ]
+    )
 
-    # Therefore every Monte-Carlo run contributes to the average.
+    average_heterozygosity_matrix = pd.DataFrame(
+        np.nanmean(h_stack, axis=0),
+        index=common_generations,
+        columns=common_patches,
+    )
 
+    # ------------------------------------------------------------------------
+    # Average N matrix
     #
+    # Empty patches are already zero.
+    # ------------------------------------------------------------------------
 
-    average_n_matrix = (
-
-        pd.concat(
-
-            all_n_matrices,
-
-            axis=0
-
-        )
-
-        .groupby(level=0)
-
-        .mean()
-
-        .reindex(
-
-            index=common_generations,
-
-            columns=common_patches
-
-        )
-
+    n_stack = np.stack(
+        [
+            matrix.to_numpy(dtype=float)
+            for matrix in n_matrices
+        ]
     )
 
-
-
-    # ============================================================
-
-    # SUMMED NUMBER OF INDIVIDUALS ACROSS MC RUNS
-
-    # ============================================================
-
-    summed_n_matrix = (
-
-        pd.concat(
-
-            all_n_matrices,
-
-            axis=0
-
-        )
-
-        .groupby(level=0)
-
-        .sum()
-
-        .reindex(
-
-            index=common_generations,
-
-            columns=common_patches
-
-        )
-
+    average_n_matrix = pd.DataFrame(
+        np.mean(n_stack, axis=0),
+        index=common_generations,
+        columns=common_patches,
     )
 
+    # ------------------------------------------------------------------------
+    # Average landscape curves
+    #
+    # IMPORTANT:
+    # These are averages of the MC curves themselves.
+    # ------------------------------------------------------------------------
 
-
-    # ============================================================
-
-    # AVERAGE NUMBER OF INDIVIDUALS ACROSS MC RUNS
-
-    # ============================================================
-
-    average_n_matrix = (
-
-        pd.concat(
-
-            all_n_matrices,
-
-            axis=0
-
-        )
-
-        .groupby(level=0)
-
-        .mean()
-
-        .reindex(
-
-            index=common_generations,
-
-            columns=common_patches
-
-        )
-
+    heterozygosity_curves = np.asarray(
+        heterozygosity_curves,
+        dtype=float,
     )
 
-
-
-    # ============================================================
-
-    # SAVE SUMMED HETEROZYGOSITY
-
-    # ============================================================
-
-    summed_output = (
-
-        output_dir /
-
-        "heterozygosity_SUM.csv"
-
+    population_curves = np.asarray(
+        population_curves,
+        dtype=float,
     )
 
-    summed_heterozygosity_matrix.to_csv(
-
-        summed_output
-
+    average_heterozygosity_curve = np.mean(
+        heterozygosity_curves,
+        axis=0,
     )
 
-
-
-    # ============================================================
-
-    # SAVE AVERAGED HETEROZYGOSITY
-
-    # ============================================================
-
-    average_output = (
-
-        output_dir /
-
-        "heterozygosity_AVERAGE.csv"
-
+    average_population_curve = np.mean(
+        population_curves,
+        axis=0,
     )
+
+    # =========================================================================
+    # SAVE DATA
+    # =========================================================================
+
+    save_data(
+        output_dir,
+        common_generations,
+        common_patches,
+        heterozygosity_curves,
+        average_heterozygosity_curve,
+        population_curves,
+        average_population_curve,
+        average_heterozygosity_matrix,
+        average_n_matrix,
+    )
+
+    # ------------------------------------------------------------------------
+    # CSV outputs
+    # ------------------------------------------------------------------------
 
     average_heterozygosity_matrix.to_csv(
-
-        average_output
-
-    )
-
-
-
-    # ============================================================
-
-    # SAVE NUMBER OF CONTRIBUTING RUNS
-
-    # ============================================================
-
-    runs_output = (
-
-        output_dir /
-
-        "heterozygosity_NUMBER_OF_RUNS.csv"
-
-    )
-
-    number_contributing_runs.to_csv(
-
-        runs_output
-
-    )
-
-
-
-    # ============================================================
-
-    # SAVE AVERAGE POPULATION SIZE
-
-    # ============================================================
-
-    average_n_output = (
-
-        output_dir /
-
-        "N_AVERAGE.csv"
-
+        output_dir / "heterozygosity_AVERAGE.csv"
     )
 
     average_n_matrix.to_csv(
-
-        average_n_output
-
-    )
-
-
-
-    # ============================================================
-
-    # SAVE SUMMED POPULATION SIZE
-
-    # ============================================================
-
-    summed_n_output = (
-
-        output_dir /
-
-        "N_SUM.csv"
-
-    )
-
-    summed_n_matrix.to_csv(
-
-        summed_n_output
-
-    )
-
-
-
-    # ============================================================
-
-    # PRINT OUTPUT FILES
-
-    # ============================================================
-
-    print()
-
-    print(
-
-        f"Summed heterozygosity data written to:"
-
+        output_dir / "N_AVERAGE.csv"
     )
 
     print(
-
-        f"  {summed_output}"
-
-    )
-
-    print()
-
-    print(
-
-        f"Average heterozygosity data written to:"
-
+        "\nAverage heterozygosity data written to:"
+        f"\n  {output_dir / 'heterozygosity_AVERAGE.csv'}"
     )
 
     print(
-
-        f"  {average_output}"
-
+        "\nAverage population-size data written to:"
+        f"\n  {output_dir / 'N_AVERAGE.csv'}"
     )
 
-    print()
-
-    print(
-
-        f"Number-of-contributing-runs data written to:"
-
-    )
-
-    print(
-
-        f"  {runs_output}"
-
-    )
-
-    print()
-
-    print(
-
-        f"Average population-size data written to:"
-
-    )
-
-    print(
-
-        f"  {average_n_output}"
-
-    )
-
-    print()
-
-    print(
-
-        f"Summed population-size data written to:"
-
-    )
-
-    print(
-
-        f"  {summed_n_output}"
-
-    )
-
-
-
-    # ============================================================
-
-    # PLOT AVERAGED HETEROZYGOSITY HEATMAP
-
-    # ============================================================
+    # =========================================================================
+    # PLOTS
+    # =========================================================================
 
     if not no_heatmaps:
 
-        print()
-
-        print(
-
-            "Creating averaged heterozygosity heatmap..."
-
-        )
-
         plot_heatmap(
-
             average_heterozygosity_matrix,
-
             common_generations,
-
             common_patches,
-
             output_dir,
-
             f"AVERAGED population heterozygosity\n"
-
             f"{number_runs} Monte-Carlo runs",
-
             "heterozygosity_AVERAGE",
-
-            colourbar_label="Mean heterozygosity",
-
+            "Mean heterozygosity",
             vmin=0,
-
             vmax=1,
-
-            decimals=2
-
-        )
-
-
-
-    # ============================================================
-
-    # PLOT AVERAGED POPULATION-SIZE HEATMAP
-
-    # ============================================================
-
-    if not no_heatmaps:
-
-        print()
-
-        print(
-
-            "Creating averaged population-size heatmap..."
-
+            decimals=2,
         )
 
         plot_heatmap(
-
             average_n_matrix,
-
             common_generations,
-
             common_patches,
-
             output_dir,
-
             f"AVERAGED number of individuals\n"
-
             f"{number_runs} Monte-Carlo runs",
-
             "N_AVERAGE",
-
-            colourbar_label="Mean number of individuals",
-
+            "Mean number of individuals",
             vmin=0,
-
             vmax=None,
-
-            decimals=1
-
+            decimals=1,
         )
 
+    # ------------------------------------------------------------------------
+    # Averaged heterozygosity + fit
+    # ------------------------------------------------------------------------
 
-
-    # ============================================================
-
-    # PLOT AVERAGED LANDSCAPE-WIDE HETEROZYGOSITY
-
-    # ============================================================
-
-    #if not no_heatmaps:
-
-    print()
-
-    print(
-
-        "Creating averaged landscape-wide "
-
-        "heterozygosity plot..."
-
-    )
-
-    a = plot_landscape_average(
-
-        average_heterozygosity_matrix,
-
+    a, a_error, b, b_error = fit_heterozygosity_curve(
         common_generations,
-
+        average_heterozygosity_curve,
         output_dir,
-
         f"Landscape-wide average heterozygosity\n"
-
         f"{number_runs} Monte-Carlo runs",
-
         "heterozygosity_AVERAGE_landscape_average",
-
-        log=True,
-
-        annotations=True
-
+        repeat_number=repeat_number
     )
 
-    plot_landscape_average(
+    # ------------------------------------------------------------------------
+    # All heterozygosity curves
+    # ------------------------------------------------------------------------
 
-        average_n_matrix,
-
+    plot_curves(
         common_generations,
-
+        heterozygosity_curves,
+        average_heterozygosity_curve,
         output_dir,
-
-        f"Landscape-wide average population size\n"
-
+        "heterozygosity_ALL_curves",
+        "Mean heterozygosity",
+        f"Landscape-wide heterozygosity\n"
         f"{number_runs} Monte-Carlo runs",
+        log=True,
+        repeat_number=repeat_number
+    )
 
+    # ------------------------------------------------------------------------
+    # Population curves
+    # ------------------------------------------------------------------------
+
+    plot_curves(
+        common_generations,
+        population_curves,
+        average_population_curve,
+        output_dir,
         "N_landscape_average",
-
-        graphtype="Number"
-
+        "Mean number of individuals",
+        f"Landscape-wide population size\n"
+        f"{number_runs} Monte-Carlo runs",
+        repeat_number=repeat_number
     )
 
-    # ============================================================
-
-    # CLEAN UP
-
-    # ============================================================
-
-    del all_heterozygosity_matrices
-
-    del all_n_matrices
-
-    gc.collect()
-
-
-
-    # ============================================================
-
+    # =========================================================================
     # FINAL SUMMARY
+    # =========================================================================
 
-    # ============================================================
-
-    print()
-
-    print("================================================")
-
+    print("\n" + "=" * 48)
     print("Finished.")
-
-    print("================================================")
+    print("=" * 48)
 
     print(
-
         f"Monte-Carlo runs processed: {number_runs}"
-
     )
 
     print(
-
         f"Generations: "
-
         f"{common_generations[0]} -> "
-
         f"{common_generations[-1]}"
-
     )
 
     print(
-
-        f"Number of patches: {len(common_patches)}"
-
+        f"Number of patches: "
+        f"{len(common_patches)}"
     )
 
-    print()
-
+    print("\nData.npz contains:")
     print(
-
-        "Individual heterozygosity:"
-
+        f"  heterozygosity_curves: "
+        f"{heterozygosity_curves.shape}"
     )
-
     print(
-
-        "  0.0 = homozygous at both loci"
-
+        f"  average_heterozygosity_curve: "
+        f"{average_heterozygosity_curve.shape}"
     )
-
     print(
-
-        "  0.5 = heterozygous at one locus"
-
+        f"  population_curves: "
+        f"{population_curves.shape}"
     )
-
     print(
-
-        "  1.0 = heterozygous at both loci"
-
+        f"  average_population_curve: "
+        f"{average_population_curve.shape}"
     )
 
-    print()
-
-    print(
-
-        "Population size:"
-
-    )
-
-    print(
-
-        "  N = number of individuals in each patch"
-
-    )
-
-    print(
-
-        "  Empty patches contribute N = 0"
-
-    )
-
-    print()
-
-    print(
-
-        "Landscape-wide heterozygosity:"
-
-    )
-
-    print(
-
-        "  Calculated as the mean of occupied-patch "
-
-        "heterozygosity at each generation."
-
-    )
-
-    print()
-
-    print(
-
-        "Empty patches are excluded from Monte-Carlo "
-
-        "heterozygosity averages."
-
-    )
-
-    print(
-
-        "Empty patches are INCLUDED as N = 0 in "
-
-        "population-size averages."
-
-    )
-
+    print("\nFit:")
+    print(f"  a = {a:.6f} ± {a_error:.6f}")
+    print(f"  b = {b:.6f} ± {b_error:.6f}")
 
     return a
 
+
+# ============================================================================
+# RUN
+# ============================================================================
+
 if __name__ == "__main__":
+
     args = parser.parse_args()
+
     main(
         d=args.d,
-        no_heatmaps=args.no_heatmaps
+        no_heatmaps=args.no_heatmaps,
+        repeat_number=-1
     )

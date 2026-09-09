@@ -161,7 +161,88 @@ def calculate_hub_statistics(ProbMatrix):
 
 
 
+import numpy as np
 
+
+def expected_decay(T, N):
+    """
+    Calculate the expected long-term heterozygosity decay
+    for a structured Wright-Fisher population.
+
+    Parameters
+    ----------
+    T : ndarray
+        Row-stochastic transition matrix.
+        T[i, j] = probability of moving from patch i to patch j.
+
+    N : int
+        Number of diploid individuals per patch.
+
+    Returns
+    -------
+    decay_rate : float
+        Exponential decay rate lambda, where
+
+            H(t) ~ H(0) * exp(-lambda * t)
+
+    decay_factor : float
+        Per-generation retention factor rho, where
+
+            H(t) ~ H(0) * rho**t
+    """
+
+    T = np.asarray(T, dtype=float)
+
+    if T.ndim != 2 or T.shape[0] != T.shape[1]:
+        raise ValueError("T must be a square matrix.")
+
+    if not np.allclose(T.sum(axis=1), 1):
+        raise ValueError("T must be row-stochastic.")
+
+    K = T.shape[0]
+
+    # Find stationary distribution:
+    # pi^T T = pi^T
+    eigenvalues, eigenvectors = np.linalg.eig(T.T)
+
+    i = np.argmin(np.abs(eigenvalues - 1))
+    pi = np.real(eigenvectors[:, i])
+    pi /= pi.sum()
+
+    if np.any(pi <= 0):
+        raise ValueError(
+            "T does not have a unique positive stationary distribution."
+        )
+
+    # Backward ancestral transition matrix:
+    #
+    # B[i, j] = pi[j] * T[j, i] / pi[i]
+    B = (T.T * pi) / pi[:, None]
+
+    # Numerical cleanup
+    B /= B.sum(axis=1, keepdims=True)
+
+    # Pairwise ancestral transition matrix
+    pair_T = np.kron(B, B)
+
+    # Probability of NOT coalescing
+    # when both lineages are in the same patch.
+    survival = np.ones(K * K)
+
+    for i in range(K):
+        survival[i * K + i] = 1 - 1 / (2 * N)
+
+    # Non-coalescing pair transition matrix
+    Q = pair_T * survival[np.newaxis, :]
+
+    # Dominant eigenvalue
+    eigenvalues = np.linalg.eigvals(Q)
+    rho = np.max(np.abs(eigenvalues))
+
+    # Exponential decay rate
+    decay_rate = -np.log(rho)
+
+    return decay_rate, rho
 
 
 
@@ -265,6 +346,11 @@ if args.d != "False":
 
     print("Effective number of patches:",
         stats["effective_number_patches"])
+
+    decay_rate, rho = expected_decay(Dispersal_Matrix, N=80)
+    print("Expected decay rate:", decay_rate)
+    print("Therefore a =", 1/(2*decay_rate))
+    print("Decay factor:", rho)
 
 else:
 

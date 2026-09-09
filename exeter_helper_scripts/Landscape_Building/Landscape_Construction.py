@@ -164,6 +164,12 @@ parser.add_argument("-sticky_radius",
                     default = 0,
                     help='Radius about where we combine nodes into larger nodes.')
 
+
+parser.add_argument("-destroy_edge_percent",
+                    type = int,
+                    default = 0,
+                    help = "Percentage of edges to destroy in the probability matrix (0-100)")
+
 args = parser.parse_args()
 
 ##########################################################
@@ -210,6 +216,10 @@ if outdir == "":
             if args.sticky_radius > 0:
                 outdir += "_sticky_radius_%s" % (str(args.sticky_radius))
             outdir += "_seed%d" % (args.r)
+
+
+        if args.destroy_edge_percent > 0:
+            outdir += "_destroy_edge_percent_%d" % (args.destroy_edge_percent)
 
 
 if not os.path.isdir(str(outdir)):
@@ -417,6 +427,33 @@ if args.type == "HLattice":
 
 if args.type == "1D":
     ProbMatrix = (DistMatrix <= 1.1 * 2 * np.sin(np.pi / args.n)).astype(float)
+
+
+
+
+
+#Destroy a proportion of edges in the probability matrix if specified
+if args.destroy_edge_percent > 0:
+    # Get the indices of the upper triangle of the matrix (excluding the diagonal)
+    upper_tri_indices = np.triu_indices_from(ProbMatrix, k=1)
+
+    # Get the edges (i,j) where ProbMatrix[i,j] > 0
+    edges = [(i, j) for i, j in zip(*upper_tri_indices) if ProbMatrix[i, j] > 0]
+
+    # Calculate the number of edges to destroy
+    num_edges_to_destroy = int(len(edges) * args.destroy_edge_percent / 100)
+
+    # Randomly select edges to destroy
+    edges_to_destroy = np.random.choice(len(edges), size=num_edges_to_destroy, replace=False)
+
+    # Set the selected edges to zero in both directions
+    for idx in edges_to_destroy:
+        i, j = edges[idx]
+        ProbMatrix[i, j] = 0
+        ProbMatrix[j, i] = 0
+
+
+
 
 
 #Normalise

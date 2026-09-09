@@ -501,7 +501,7 @@ def plot_landscape_average(
 
             #The results
             def fitfunc(x,a,b):
-                return b * np.exp(-x /a)
+                return b * np.exp(-x /(2*a))
 
             popt,pcov = curve_fit(fitfunc,
                                 np.asarray(generations),
@@ -512,12 +512,18 @@ def plot_landscape_average(
 
             print("Fitting params:",a,b)
 
+            a_error = np.sqrt(pcov[0, 0])
+            b_error = np.sqrt(pcov[1, 1])
+
+            print(f"a = {a:.3f} ± {a_error:.3f}")
+            print(f"b = {b:.3f} ± {b_error:.3f}")
+
             plt.plot(generations,fitfunc(np.asarray(generations),a,b),
                     linestyle='dashed')
 
             plt.text(generations[0],
                     landscape_average.values[0],
-                    r"$\lambda = 1 /(2 \times %0.3f)$"%(a/2))
+                    r"$\lambda = 1 /(2 \times %0.3f)$"%(a))
 
     if graphtype == "Number":
         numberdata = np.asarray(landscape_average.values)

@@ -53,14 +53,13 @@ for repeat_number, repeat_dir in repeat_dirs:
         print(f"WARNING: Multiple directories found inside raw for Repeat_{repeat_number}: {raw_subdirs}"); print("Skipping this repeat."); continue
     analysis_dir = os.path.join(raw_dir, raw_subdirs[0])
     print("Analysis directory:", analysis_dir)
-    Exponential_Decay_parameters.append(Heterozygosity_ai.main(analysis_dir))
+    Exponential_Decay_parameters.append(Heterozygosity_ai.main(analysis_dir,True,repeat_number))
 
 #=============================================================================#
 # FINISHED
 #=============================================================================#
 print(Exponential_Decay_parameters)
-endtime = time.time()
-print("\n" + "=" * 70); print("All repeats processed"); print("Time taken:", endtime - starttime, "seconds"); print("=" * 70)
+
 
 #=============================================================================#
 # BASIC PLOTS
@@ -173,3 +172,7 @@ print(f"Global PC1 explains {100*Global_PCA.explained_variance_ratio_[0]:.1f}% o
 print(f"Local PC1 explains {100*Local_PCA.explained_variance_ratio_[0]:.1f}% of local structural variation; PC regression R² = {Local_R2:.4f}")
 print("\nAnalysis results saved to:", SaveDir)
 
+
+
+endtime = time.time()
+print("\n" + "=" * 70); print("All analysis processed"); print("Time taken:", endtime - starttime, "seconds"); print("=" * 70)
