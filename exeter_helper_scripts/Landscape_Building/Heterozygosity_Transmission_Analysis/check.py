@@ -2,6 +2,9 @@ import numpy as np
 import os
 import argparse
 import copy
+import time
+
+starttime = time.time()
 
 #=============================================================================#
 # ARGPARSER
@@ -62,7 +65,7 @@ print("\n" + "=" * 70)
 print("matrixlist")
 print("=" * 70)
 
-print(matrixlist)
+print(matrixlist[0])
 
 
 print("\n" + "=" * 70)
@@ -203,3 +206,7 @@ np.savez(
         dtype=object
     )
 )
+
+endtime = time.time()
+
+print("Time taken:",endtime-starttime)
