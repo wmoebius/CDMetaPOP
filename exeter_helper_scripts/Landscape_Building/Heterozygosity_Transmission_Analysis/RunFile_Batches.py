@@ -17,292 +17,175 @@ import subprocess
 import os
 import shutil
 import argparse
+import copy
 
-
-starttime = time.time()
-
-
-#=============================================================================#
-# ARGPARSER
-#=============================================================================#
-
-parser = argparse.ArgumentParser(
-    prog="RGG_Construction.py",
-    description="Create landscapes and run CDMetaPOP in batches"
-)
-
-parser.add_argument(
-    "-i",
-    type=str,
-    default="default_inputs/inputs",
-    help="inputs directory for simulation"
-)
-
-args = parser.parse_args()
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 #=============================================================================#
-# SAVING DETAILS
+# WORKER FUNCTIONS
 #=============================================================================#
 
-os.makedirs(SaveDirName, exist_ok=True)
+def create_landscape(args):
+    """
+    Create one landscape.
 
-try:
-    shutil.copy("RunFile_Params.py", SaveDirName)
-except FileNotFoundError:
-    print("RunFile_Params.py not found, not copied to SaveDirName")
+    This function is run in a separate process.
+    """
 
+    rep, directoryname, input_dir = args
 
-#=============================================================================#
-# CREATE LANDSCAPES
-#=============================================================================#
-
-print("Starting to create landscapes")
-
-repeat_dirs = []
-
-for rep in range(repeats):
-
-    print(f"Creating landscape for repeat {rep}")
-
-    directoryname = os.path.join(
-        SaveDirName,
-        f"Repeat_{rep}"
-    )
-
-    repeat_dirs.append((rep, directoryname))
+    print(f"Creating landscape for Repeat_{rep}")
 
     Landscape_Construction.main(
         n=n,
         ProbDist=ProbDist,
         param1=param1,
         d=directoryname,
-        i=args.i,
+        i=input_dir,
         r=rep
     )
 
-print("Finished creating landscapes")
+    return rep, directoryname
 
 
-#=============================================================================#
-# SPLIT INTO BATCHES
-#=============================================================================#
+def analyse_repeat(args):
+    """
+    Analyse one repeat and delete its raw data if analysis succeeds.
 
-Repeat_Matrix = [
-    repeat_dirs[i:i + batch_size]
-    for i in range(0, len(repeat_dirs), batch_size)
-]
+    This function is run in a separate process.
+    """
 
-print(
-    f"\nRunning {repeats} repeats in "
-    f"{len(Repeat_Matrix)} batches "
-    f"of maximum size {batch_size}"
-)
+    repeat_number, repeat_dir = args
 
+    print("\n" + "=" * 70)
+    print(f"Processing Repeat {repeat_number}")
+    print("=" * 70)
 
-#=============================================================================#
-# STORAGE FOR ANALYSIS RESULTS
-#=============================================================================#
+    #=========================================================================#
+    # MATRIX ANALYSIS
+    #=========================================================================#
 
-Exponential_Decay_parameters = []
-matrixlist = []
-
-
-#=============================================================================#
-# RUN SIMULATIONS BATCH BY BATCH
-#=============================================================================#
-
-for batch_number, batch in enumerate(Repeat_Matrix):
-
-    print("\n" + "#" * 70)
-    print(
-        f"BATCH {batch_number + 1} / {len(Repeat_Matrix)}"
+    cdmatrix_path = os.path.join(
+        repeat_dir,
+        "inputs",
+        "cdmats",
+        "cdmatrix.csv"
     )
-    print("#" * 70)
 
+    if not os.path.isfile(cdmatrix_path):
 
-    #=========================================================================#
-    # RUN CDMetaPOP
-    #=========================================================================#
-
-    print("\nRunning CDMetaPOP simulations")
-
-    plist = []
-
-    for repeat_number, repeat_dir in batch:
-
-        print(f"Starting Repeat_{repeat_number}")
-
-        p = subprocess.Popen([
-            "nice",
-            "-n",
-            "19",
-            "uv",
-            "run",
-            "../../../src/CDmetaPOP.py",
-            os.path.join(repeat_dir, "inputs"),
-            "RunVars.csv",
-            "../outputs/raw/"
-        ])
-
-        plist.append((repeat_number, p))
-
-
-    # Wait for all simulations in this batch
-    for repeat_number, p in plist:
-
-        returncode = p.wait()
-
-        if returncode != 0:
-            print(
-                f"WARNING: CDMetaPOP for Repeat_{repeat_number} "
-                f"finished with return code {returncode}"
-            )
-
-
-    print("Batch simulations finished")
-
-
-    #=========================================================================#
-    # ANALYSE EACH REPEAT
-    #=========================================================================#
-
-    for repeat_number, repeat_dir in batch:
-
-        print("\n" + "=" * 70)
-        print(f"Processing Repeat {repeat_number}")
-        print("=" * 70)
-
-
-        #=====================================================================#
-        # MATRIX ANALYSIS
-        #=====================================================================#
-
-        cdmatrix_path = os.path.join(
-            repeat_dir,
-            "inputs",
-            "cdmats",
-            "cdmatrix.csv"
+        print(
+            f"WARNING: cdmatrix.csv does not exist "
+            f"for Repeat_{repeat_number}: "
+            f"{cdmatrix_path}"
         )
 
-        if not os.path.isfile(cdmatrix_path):
+        return None
 
-            print(
-                f"WARNING: cdmatrix.csv does not exist "
-                f"for Repeat_{repeat_number}: "
-                f"{cdmatrix_path}"
-            )
+    print(
+        f"Repeat_{repeat_number}: "
+        f"CD matrix: {cdmatrix_path}"
+    )
 
-            continue
+    matrix = np.genfromtxt(
+        cdmatrix_path,
+        delimiter=","
+    )
 
+    #=========================================================================#
+    # FIND RAW SIMULATION DIRECTORY
+    #=========================================================================#
 
-        print("CD matrix:", cdmatrix_path)
+    raw_dir = os.path.join(
+        repeat_dir,
+        "outputs",
+        "raw"
+    )
 
-        matrix = np.genfromtxt(cdmatrix_path, delimiter=",")
+    if not os.path.isdir(raw_dir):
 
-
-        #=====================================================================#
-        # FIND RAW SIMULATION DIRECTORY
-        #=====================================================================#
-
-        raw_dir = os.path.join(
-            repeat_dir,
-            "outputs",
-            "raw"
+        print(
+            f"WARNING: raw directory does not exist "
+            f"for Repeat_{repeat_number}: "
+            f"{raw_dir}"
         )
 
-        if not os.path.isdir(raw_dir):
+        return None
 
-            print(
-                f"WARNING: raw directory does not exist "
-                f"for Repeat_{repeat_number}: "
-                f"{raw_dir}"
-            )
+    raw_subdirs = [
+        dirname
+        for dirname in os.listdir(raw_dir)
+        if os.path.isdir(
+            os.path.join(raw_dir, dirname)
+        )
+    ]
 
-            continue
+    if len(raw_subdirs) == 0:
 
-
-        raw_subdirs = [
-            dirname
-            for dirname in os.listdir(raw_dir)
-            if os.path.isdir(
-                os.path.join(raw_dir, dirname)
-            )
-        ]
-
-
-        if len(raw_subdirs) == 0:
-
-            print(
-                f"WARNING: No directory found inside raw "
-                f"for Repeat_{repeat_number}"
-            )
-
-            continue
-
-
-        if len(raw_subdirs) > 1:
-
-            print(
-                f"WARNING: Multiple directories found inside raw "
-                f"for Repeat_{repeat_number}: "
-                f"{raw_subdirs}"
-            )
-
-            print("Skipping this repeat.")
-
-            continue
-
-
-        analysis_dir = os.path.join(
-            raw_dir,
-            raw_subdirs[0]
+        print(
+            f"WARNING: No directory found inside raw "
+            f"for Repeat_{repeat_number}"
         )
 
-        print("Analysis directory:", analysis_dir)
+        return None
 
+    if len(raw_subdirs) > 1:
 
-        #=====================================================================#
-        # HETEROZYGOSITY ANALYSIS
-        #=====================================================================#
+        print(
+            f"WARNING: Multiple directories found inside raw "
+            f"for Repeat_{repeat_number}: "
+            f"{raw_subdirs}"
+        )
 
-        try:
+        print("Skipping this repeat.")
 
-            decay_parameter = Heterozygosity_ai.main(
+        return None
+
+    analysis_dir = os.path.join(
+        raw_dir,
+        raw_subdirs[0]
+    )
+
+    print(
+        f"Repeat_{repeat_number}: "
+        f"Analysis directory: {analysis_dir}"
+    )
+
+    #=========================================================================#
+    # HETEROZYGOSITY ANALYSIS
+    #=========================================================================#
+
+    try:
+
+        decay_parameter, heterozygosity_curves, population_curves = (
+            Heterozygosity_ai.main(
                 analysis_dir,
+                True,
+                True,
                 True,
                 repeat_number
             )
+        )
 
-            # Only save the results once the heterozygosity
-            # calculation has successfully completed
+    except Exception as e:
 
-            Exponential_Decay_parameters.append(
-                decay_parameter
-            )
+        print(
+            f"ERROR analysing Repeat_{repeat_number}: {e}"
+        )
 
-            matrixlist.append(
-                matrix
-            )
+        print(
+            "Raw data will NOT be deleted so that "
+            "the error can be investigated."
+        )
 
+        return None
 
-        except Exception as e:
+    #=========================================================================#
+    # DELETE RAW DATA
+    #=========================================================================#
 
-            print(
-                f"ERROR analysing Repeat_{repeat_number}: {e}"
-            )
-
-            print(
-                "Raw data will NOT be deleted so that "
-                "the error can be investigated."
-            )
-
-            continue
-
-
-        #=====================================================================#
-        # DELETE RAW DATA
-        #=====================================================================#
+    try:
 
         print(
             f"Analysis complete. "
@@ -315,149 +198,368 @@ for batch_number, batch in enumerate(Repeat_Matrix):
             f"Raw data deleted for Repeat_{repeat_number}"
         )
 
+    except Exception as e:
+
+        print(
+            f"WARNING: Could not delete raw data for "
+            f"Repeat_{repeat_number}: {e}"
+        )
+
+    #=========================================================================#
+    # RETURN RESULTS
+    #=========================================================================#
+
+    return {
+        "repeat_number": repeat_number,
+        "matrix": matrix,
+        "decay_parameter": decay_parameter,
+        "heterozygosity_curves": copy.copy(
+            heterozygosity_curves
+        ),
+        "population_curves": copy.copy(
+            population_curves
+        ),
+    }
+
+
+#=============================================================================#
+# MAIN
+#=============================================================================#
+
+def main():
+
+    starttime = time.time()
+
+    #========================================================================#
+    # ARGPARSER
+    #========================================================================#
+
+    parser = argparse.ArgumentParser(
+        prog="RGG_Construction.py",
+        description="Create landscapes and run CDMetaPOP in batches"
+    )
+
+    parser.add_argument(
+        "-i",
+        type=str,
+        default="default_inputs/inputs",
+        help="inputs directory for simulation"
+    )
+
+    args = parser.parse_args()
+
+    #========================================================================#
+    # SAVING DETAILS
+    #========================================================================#
+
+    os.makedirs(
+        SaveDirName,
+        exist_ok=True
+    )
+
+    try:
+
+        shutil.copy(
+            "RunFile_Params.py",
+            SaveDirName
+        )
+
+    except FileNotFoundError:
+
+        print(
+            "RunFile_Params.py not found, "
+            "not copied to SaveDirName"
+        )
+
+    #========================================================================#
+    # CREATE REPEAT DIRECTORIES
+    #========================================================================#
+
+    repeat_dirs = []
+
+    for rep in range(repeats):
+
+        directoryname = os.path.join(
+            SaveDirName,
+            f"Repeat_{rep}"
+        )
+
+        repeat_dirs.append(
+            (rep, directoryname)
+        )
+
+    #========================================================================#
+    # SPLIT INTO BATCHES
+    #========================================================================#
+
+    Repeat_Matrix = [
+        repeat_dirs[i:i + batch_size]
+        for i in range(
+            0,
+            len(repeat_dirs),
+            batch_size
+        )
+    ]
 
     print(
-        f"\nFinished batch "
-        f"{batch_number + 1} / {len(Repeat_Matrix)}"
+        f"\nRunning {repeats} repeats in "
+        f"{len(Repeat_Matrix)} batches "
+        f"of maximum size {batch_size}"
     )
 
-#=============================================================================#
-# SAVE ANALYSIS RESULTS
-#=============================================================================#
+    #========================================================================#
+    # STORAGE FOR ANALYSIS RESULTS
+    #========================================================================#
 
-results_path = os.path.join(
-    SaveDirName,
-    "Analysis_Results.npz"
-)
+    Exponential_Decay_parameters = []
+    heterozygosity_curves_list = []
+    population_curves_list = []
+    matrixlist = []
 
-np.savez(
-    results_path,
-    matrixlist=np.asarray(matrixlist, dtype=object),
-    Exponential_Decay_parameters=np.asarray(
-        Exponential_Decay_parameters,
-        dtype=object
+    #========================================================================#
+    # RUN BATCHES
+    #========================================================================#
+
+    for batch_number, batch in enumerate(Repeat_Matrix):
+
+        print("\n" + "#" * 70)
+        print(
+            f"BATCH {batch_number + 1} / "
+            f"{len(Repeat_Matrix)}"
+        )
+        print("#" * 70)
+
+        #====================================================================#
+        # CREATE LANDSCAPES IN PARALLEL
+        #====================================================================#
+
+        print("\nCreating landscapes in parallel")
+
+        landscape_args = [
+            (
+                repeat_number,
+                repeat_dir,
+                args.i
+            )
+            for repeat_number, repeat_dir in batch
+        ]
+
+        with ProcessPoolExecutor(
+            max_workers=len(batch)
+        ) as executor:
+
+            futures = [
+                executor.submit(
+                    create_landscape,
+                    landscape_arg
+                )
+                for landscape_arg in landscape_args
+            ]
+
+            for future in as_completed(futures):
+
+                try:
+
+                    repeat_number, repeat_dir = (
+                        future.result()
+                    )
+
+                    print(
+                        f"Finished landscape for "
+                        f"Repeat_{repeat_number}"
+                    )
+
+                except Exception as e:
+
+                    print(
+                        f"ERROR creating landscape: {e}"
+                    )
+
+        print("Finished creating landscapes")
+
+        #====================================================================#
+        # RUN CDMetaPOP IN PARALLEL
+        #====================================================================#
+
+        print("\nRunning CDMetaPOP simulations")
+
+        plist = []
+
+        for repeat_number, repeat_dir in batch:
+
+            print(
+                f"Starting Repeat_{repeat_number}"
+            )
+
+            p = subprocess.Popen([
+                "nice",
+                "-n",
+                "19",
+                "uv",
+                "run",
+                "../../../src/CDmetaPOP.py",
+                os.path.join(
+                    repeat_dir,
+                    "inputs"
+                ),
+                "RunVars.csv",
+                "../outputs/raw/"
+            ])
+
+            plist.append(
+                (repeat_number, p)
+            )
+
+        # Wait for all simulations in this batch
+        for repeat_number, p in plist:
+
+            returncode = p.wait()
+
+            if returncode != 0:
+
+                print(
+                    f"WARNING: CDMetaPOP for "
+                    f"Repeat_{repeat_number} "
+                    f"finished with return code "
+                    f"{returncode}"
+                )
+
+        print("Batch simulations finished")
+
+        #====================================================================#
+        # ANALYSE + DELETE IN PARALLEL
+        #====================================================================#
+
+        print(
+            "\nAnalysing repeats in parallel"
+        )
+
+        with ProcessPoolExecutor(
+            max_workers=len(batch)
+        ) as executor:
+
+            futures = {
+                executor.submit(
+                    analyse_repeat,
+                    (repeat_number, repeat_dir)
+                ): repeat_number
+                for repeat_number, repeat_dir in batch
+            }
+
+            for future in as_completed(futures):
+
+                repeat_number = futures[future]
+
+                try:
+
+                    result = future.result()
+
+                    if result is None:
+
+                        print(
+                            f"Repeat_{repeat_number} "
+                            f"returned no results"
+                        )
+
+                        continue
+
+                    #========================================================#
+                    # STORE RESULTS
+                    #========================================================#
+
+                    Exponential_Decay_parameters.append(
+                        result["decay_parameter"]
+                    )
+
+                    heterozygosity_curves_list.append(
+                        result["heterozygosity_curves"]
+                    )
+
+                    population_curves_list.append(
+                        result["population_curves"]
+                    )
+
+                    matrixlist.append(
+                        result["matrix"]
+                    )
+
+                    print(
+                        f"Finished analysis for "
+                        f"Repeat_{repeat_number}"
+                    )
+
+                except Exception as e:
+
+                    print(
+                        f"ERROR processing "
+                        f"Repeat_{repeat_number}: {e}"
+                    )
+
+        print(
+            f"\nFinished batch "
+            f"{batch_number + 1} / "
+            f"{len(Repeat_Matrix)}"
+        )
+
+    #========================================================================#
+    # SAVE ANALYSIS RESULTS
+    #========================================================================#
+
+    results_path = os.path.join(
+        SaveDirName,
+        "Analysis_Results.npz"
     )
-)
 
-print(f"\nSaved analysis results to:")
-print(results_path)
-#=============================================================================#
-# FINISHED
-#=============================================================================#
+    np.savez(
+        results_path,
 
-print("\nFinished all landscape simulations and analyses")
+        matrixlist=np.asarray(
+            matrixlist,
+            dtype=object
+        ),
 
-endtime = time.time()
+        Exponential_Decay_parameters=np.asarray(
+            Exponential_Decay_parameters,
+            dtype=object
+        ),
 
-print(
-    f"Total time taken: "
-    f"{endtime - starttime:.2f} seconds"
-)
+        heterozygosity_curves_list=np.asarray(
+            heterozygosity_curves_list,
+            dtype=object
+        ),
 
-"""
-import numpy as np
-from RunFile_Params import n, ProbDist, param1,SaveDirName,repeats,batch_num,batch_size
-import Landscape_Construction
+        population_curves_list=np.asarray(
+            population_curves_list,
+            dtype=object
+        )
+    )
 
-import time
+    print(
+        f"\nSaved analysis results to:"
+    )
 
-import subprocess
-import os,shutil
-import argparse
-import copy
+    print(results_path)
 
-starttime = time.time()
+    #========================================================================#
+    # FINISHED
+    #========================================================================#
 
-#=============================================================================#
-# ARGPARSER
-#=============================================================================#
-parser = argparse.ArgumentParser(
-    prog = "RGG_Construction.py",
-    description="Create a landscape for CDmetaPOP")
+    print(
+        "\nFinished all landscape simulations "
+        "and analyses"
+    )
 
+    endtime = time.time()
 
-
-parser.add_argument("-i",
-                    type=str,
-                    default='default_inputs/inputs',
-                    help='inputs directory for simulation')
-
-
-args = parser.parse_args()
-
-
-
+    print(
+        f"Total time taken: "
+        f"{endtime - starttime:.2f} seconds"
+    )
 
 
 #=============================================================================#
-# Saving Details
+# ENTRY POINT
 #=============================================================================#
-if not os.path.isdir(SaveDirName):
-    os.mkdir(SaveDirName)
-    print("Created Directory")
 
-try:
-    shutil.copy("RunFile_Params.py",SaveDirName)
-except:
-    print("RunFile_Params.py not found, not copied to SaveDirName")
-
-
-
-print("Starting to create landscapes")
-#Create the landscapes
-Repeat_Matrix = []
-Repeat_Directories = []
-for rep in range(repeats):
-    print(f"Creating landscape for repeat {rep}")
-    directoryname = SaveDirName+"/Repeat_%d"%rep   
-    Repeat_Directories.append(directoryname)
-    Landscape_Construction.main(n=n, ProbDist=ProbDist, param1=param1, d=directoryname, i=args.i,r=rep)
-
-    if len(Repeat_Directories) == batch_size:
-        Repeat_Matrix.append(copy.copy(Repeat_Directories))
-        Repeat_Directories = []
-
-print("Finished creating landscapes")
-
-
-
-print("Starting landscape simulations")
-#Execute the landscape simulations in this format:
-# uv run ../../src/CDmetaPOP.py RGG_n20_ProbDist_Power_param1_4.0_nonperiodic_seed0/inputs RunVars.csv ../outputs/raw/
-
-
-for Repeat_Directories in Repeat_Matrix:
-    #RUN SIMULATIONS
-    plist = []
-    for i in Repeat_Directories:
-        p=subprocess.Popen(['nice','-n','19','uv','run','../../../src/CDmetaPOP.py',str(i)+'/inputs', 'RunVars.csv', '../outputs/raw/'])
-        plist.append(p)
-
-    for p in plist:
-        p.wait()
-
-    #EXTRACT HETEROZYGOSITY DECAY AND CDMATRIX
-    plist = []
-    for i in Repeat_Directories:
-        p=subprocess.Popen(['nice','-n','19','uv','run','Extract_Heterozygosity_Decay.py',str(i)+'/outputs/raw/'])
-        plist.append(p)
-
-    for p in plist:
-        p.wait()
-
-    #Delete all CSVs in the outputs/raw directory to save space
-    for i in Repeat_Directories:
-        for file in os.listdir(str(i)+'/outputs/raw/'):
-            if file.endswith(".csv"):
-                os.remove(str(i)+'/outputs/raw/'+file)
-
-
-
-
-
-print("Finished landscape simulations")
-
-
-endtime = time.time()
-print(f"Total time taken: {endtime - starttime} seconds")
-"""
+if __name__ == "__main__":
+    main()

@@ -31,6 +31,19 @@ parser.add_argument(
 )
 
 
+parser.add_argument(
+    "--no-plots",
+    action="store_true",
+    help="Do not create plots",
+)
+
+
+parser.add_argument(
+    "--no-save",
+    action="store_true",
+    help="Do not save Data.npz or CSV files",
+)
+
 # ============================================================================
 # BASIC FUNCTIONS
 # ============================================================================
@@ -279,8 +292,11 @@ def fit_heterozygosity_curve(
         dtype=float,
     )
 
-    def fit_function(x, a, b):
+    def fit_function_full(x, a, b):
         return b * np.exp(-x / (2 * a))
+
+    def fit_function(x, a):
+        return 0.5 * np.exp(-x / (2 * a))
 
     valid = (
         np.isfinite(generations)
@@ -294,14 +310,16 @@ def fit_heterozygosity_curve(
         curve[valid],
     )
 
-    a, b = popt
+    #a, b = popt
+    a = popt[0]
+    b = 0
 
     errors = np.sqrt(
         np.diag(pcov)
     )
 
     a_error = errors[0]
-    b_error = errors[1]
+    b_error = 0#errors[1]
 
     fig, ax = plt.subplots(
         figsize=(10, 6)
@@ -319,8 +337,8 @@ def fit_heterozygosity_curve(
         generations,
         fit_function(
             generations,
-            a,
-            b,
+            a#,
+            #b,
         ),
         linestyle="dashed",
         label=(
@@ -747,30 +765,32 @@ def analyse_npz(
         repeat_number=repeat_number
     )
 
-    plot_curves(
-        generations,
-        heterozygosity_curves,
-        average_heterozygosity_curve,
-        output_dir,
-        "heterozygosity_ALL_curves",
-        "Mean heterozygosity",
-        f"Landscape-wide heterozygosity\n"
-        f"{number_runs} Monte-Carlo runs",
-        log=True,
-        repeat_number=repeat_number
-    )
+    if not no_plots:
 
-    plot_curves(
-        generations,
-        population_curves,
-        average_population_curve,
-        output_dir,
-        "N_landscape_average",
-        "Mean number of individuals",
-        f"Landscape-wide population size\n"
-        f"{number_runs} Monte-Carlo runs",
-        repeat_number=repeat_number
-    )
+        plot_curves(
+            generations,
+            heterozygosity_curves,
+            average_heterozygosity_curve,
+            output_dir,
+            "heterozygosity_ALL_curves",
+            "Mean heterozygosity",
+            f"Landscape-wide heterozygosity\n"
+            f"{number_runs} Monte-Carlo runs",
+            log=True,
+            repeat_number=repeat_number
+        )
+
+        plot_curves(
+            generations,
+            population_curves,
+            average_population_curve,
+            output_dir,
+            "N_landscape_average",
+            "Mean number of individuals",
+            f"Landscape-wide population size\n"
+            f"{number_runs} Monte-Carlo runs",
+            repeat_number=repeat_number
+        )
 
     # ------------------------------------------------------------------------
     # Summary
@@ -802,7 +822,7 @@ def analyse_npz(
 # MAIN
 # ============================================================================
 
-def main(d, no_heatmaps=False,repeat_number=-1):
+def main(d, no_heatmaps=False,no_plots=False,no_save=False,repeat_number=-1):
 
     output_dir = Path(d)
 
@@ -1009,40 +1029,41 @@ def main(d, no_heatmaps=False,repeat_number=-1):
     # =========================================================================
     # SAVE DATA
     # =========================================================================
+    if not no_save:
+        save_data(
+            output_dir,
+            common_generations,
+            common_patches,
+            heterozygosity_curves,
+            average_heterozygosity_curve,
+            population_curves,
+            average_population_curve,
+            average_heterozygosity_matrix,
+            average_n_matrix,
+        )
 
-    save_data(
-        output_dir,
-        common_generations,
-        common_patches,
-        heterozygosity_curves,
-        average_heterozygosity_curve,
-        population_curves,
-        average_population_curve,
-        average_heterozygosity_matrix,
-        average_n_matrix,
-    )
+        # ------------------------------------------------------------------------
+        # CSV outputs
+        # ------------------------------------------------------------------------
 
-    # ------------------------------------------------------------------------
-    # CSV outputs
-    # ------------------------------------------------------------------------
+    
+        average_heterozygosity_matrix.to_csv(
+            output_dir / "heterozygosity_AVERAGE.csv"
+        )
 
-    average_heterozygosity_matrix.to_csv(
-        output_dir / "heterozygosity_AVERAGE.csv"
-    )
+        average_n_matrix.to_csv(
+            output_dir / "N_AVERAGE.csv"
+        )
 
-    average_n_matrix.to_csv(
-        output_dir / "N_AVERAGE.csv"
-    )
+        print(
+            "\nAverage heterozygosity data written to:"
+            f"\n  {output_dir / 'heterozygosity_AVERAGE.csv'}"
+        )
 
-    print(
-        "\nAverage heterozygosity data written to:"
-        f"\n  {output_dir / 'heterozygosity_AVERAGE.csv'}"
-    )
-
-    print(
-        "\nAverage population-size data written to:"
-        f"\n  {output_dir / 'N_AVERAGE.csv'}"
-    )
+        print(
+            "\nAverage population-size data written to:"
+            f"\n  {output_dir / 'N_AVERAGE.csv'}"
+        )
 
     # =========================================================================
     # PLOTS
@@ -1095,35 +1116,35 @@ def main(d, no_heatmaps=False,repeat_number=-1):
     # ------------------------------------------------------------------------
     # All heterozygosity curves
     # ------------------------------------------------------------------------
+    if not no_plots:
+        plot_curves(
+            common_generations,
+            heterozygosity_curves,
+            average_heterozygosity_curve,
+            output_dir,
+            "heterozygosity_ALL_curves",
+            "Mean heterozygosity",
+            f"Landscape-wide heterozygosity\n"
+            f"{number_runs} Monte-Carlo runs",
+            log=True,
+            repeat_number=repeat_number
+        )
 
-    plot_curves(
-        common_generations,
-        heterozygosity_curves,
-        average_heterozygosity_curve,
-        output_dir,
-        "heterozygosity_ALL_curves",
-        "Mean heterozygosity",
-        f"Landscape-wide heterozygosity\n"
-        f"{number_runs} Monte-Carlo runs",
-        log=True,
-        repeat_number=repeat_number
-    )
+        # ------------------------------------------------------------------------
+        # Population curves
+        # ------------------------------------------------------------------------
 
-    # ------------------------------------------------------------------------
-    # Population curves
-    # ------------------------------------------------------------------------
-
-    plot_curves(
-        common_generations,
-        population_curves,
-        average_population_curve,
-        output_dir,
-        "N_landscape_average",
-        "Mean number of individuals",
-        f"Landscape-wide population size\n"
-        f"{number_runs} Monte-Carlo runs",
-        repeat_number=repeat_number
-    )
+        plot_curves(
+            common_generations,
+            population_curves,
+            average_population_curve,
+            output_dir,
+            "N_landscape_average",
+            "Mean number of individuals",
+            f"Landscape-wide population size\n"
+            f"{number_runs} Monte-Carlo runs",
+            repeat_number=repeat_number
+        )
 
     # =========================================================================
     # FINAL SUMMARY
@@ -1170,7 +1191,7 @@ def main(d, no_heatmaps=False,repeat_number=-1):
     print(f"  a = {a:.6f} ± {a_error:.6f}")
     print(f"  b = {b:.6f} ± {b_error:.6f}")
 
-    return a
+    return a, average_heterozygosity_curve, average_population_curve
 
 
 # ============================================================================
@@ -1184,5 +1205,7 @@ if __name__ == "__main__":
     main(
         d=args.d,
         no_heatmaps=args.no_heatmaps,
+        no_plots=args.no_plots,
+        no_save=args.no_save,
         repeat_number=-1
     )
