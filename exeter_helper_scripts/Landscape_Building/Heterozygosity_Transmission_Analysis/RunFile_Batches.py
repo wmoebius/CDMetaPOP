@@ -10,7 +10,7 @@ from RunFile_Params import (
 
 import Landscape_Construction
 import Matrix_Analysis
-import Heterozygosity_ai
+import Heterozygosity_ai_alphabetagamma
 
 import time
 import subprocess
@@ -158,8 +158,8 @@ def analyse_repeat(args):
 
     try:
 
-        decay_parameter, heterozygosity_curves, population_curves = (
-            Heterozygosity_ai.main(
+        decay_parameter, heterozygosity_curves, population_curves, alpha_heterozygosity_curves, beta_heterozygosity_matrices = (
+            Heterozygosity_ai_alphabetagamma.main(
                 analysis_dir,
                 True,
                 True,
@@ -219,6 +219,12 @@ def analyse_repeat(args):
         "population_curves": copy.copy(
             population_curves
         ),
+        "alpha_heterozygosity_curves": copy.copy(
+            alpha_heterozygosity_curves
+        ),
+        "beta_heterozygosity_matrices": copy.copy(
+            beta_heterozygosity_matrices
+        )
     }
 
 
@@ -315,6 +321,9 @@ def main():
     heterozygosity_curves_list = []
     population_curves_list = []
     matrixlist = []
+
+    alpha_heterozygosity_curves_list = []
+    beta_heterozygosity_matrices_list = []
 
     #========================================================================#
     # RUN BATCHES
@@ -483,6 +492,14 @@ def main():
                         result["matrix"]
                     )
 
+                    alpha_heterozygosity_curves_list.append(
+                        result["alpha_heterozygosity_curves"]
+                    )
+
+                    beta_heterozygosity_matrices_list.append(
+                        result["beta_heterozygosity_matrices"]
+                    )
+
                     print(
                         f"Finished analysis for "
                         f"Repeat_{repeat_number}"
@@ -530,6 +547,15 @@ def main():
 
         population_curves_list=np.asarray(
             population_curves_list,
+            dtype=object
+        ),
+
+        alpha_heterozygosity_curves_list=np.asarray(
+            alpha_heterozygosity_curves_list,
+            dtype=object
+        ),
+        beta_heterozygosity_matrices_list=np.asarray(
+            beta_heterozygosity_matrices_list,
             dtype=object
         )
     )

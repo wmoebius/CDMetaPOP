@@ -66,9 +66,14 @@ Exponential_Decay_parameters = (
     data["Exponential_Decay_parameters"].tolist()
 )
 
-#heterozygosity_curves_list = data["heterozygosity_curves_list"].tolist()
+heterozygosity_curves_list = data["heterozygosity_curves_list"].tolist()
 
-#population_curves_list = data["population_curves_list"].tolist()
+population_curves_list = data["population_curves_list"].tolist()
+
+alpha_heterozygosity_curves_list = data["alpha_heterozygosity_curves_list"].tolist()
+
+
+beta_heterozygosity_matrices_list = data["beta_heterozygosity_matrices_list"].tolist()
 
 #=============================================================================#
 # PRINT RESULTS
@@ -217,6 +222,11 @@ def heterozygosity_a(T, K=100):
     return a
 
 if args.analysis_mode:
+
+    """
+    Calculate mixing times for each transition matrix and plot against the
+    corresponding exponential decay parameters.
+    """
     mixing_times = []
 
     for i in range(len(matrixlist)):
@@ -231,8 +241,105 @@ if args.analysis_mode:
     plt.ylabel("Exponential decay parameters")
     plt.title("Mixing time vs Exponential decay parameters")
     plt.savefig(str(args.d) + "/MixingTime_Versus_Decay.png")
-    plt.show()
+    plt.close()
 
+
+    """
+    For each landscape, plot all alpha heterozygosity curves
+    for each patch, with one curve per repeat.
+    """
+    """
+    for i in range(len(alpha_heterozygosity_curves_list)):
+
+        n_repeats = len(alpha_heterozygosity_curves_list[i])
+        
+        # First list is empty, so subtract one
+        n_patches = len(alpha_heterozygosity_curves_list[i][0]) - 1
+
+        for j in range(n_patches):
+
+            plt.figure(figsize=(8, 6))
+
+            # j = 0 corresponds to Patch 1
+            patch_index = j + 1
+
+            # Plot this patch for every repeat
+            for k in range(n_repeats):
+
+                curve = alpha_heterozygosity_curves_list[i][k][patch_index]
+
+                plt.plot(
+                    np.arange(len(curve)),
+                    curve,
+                    label=f"Repeat {k+1}"
+                )
+
+            plt.title(
+                f"Alpha Heterozygosity Curves "
+                f"for Landscape {i}, Patch {j+1}"
+            )
+            plt.xlabel("Time")
+            plt.ylabel("Alpha Heterozygosity")
+            plt.legend()
+
+            plt.savefig(
+                str(args.d)
+                + f"/Alpha_Heterozygosity_Curves_Landscape_{i}, Patch_{j+1}.png"
+            )
+
+            plt.close()
+    """
+
+    """
+    For each landscape, plot the beta heterozygosity matrix
+    for each repeat.
+    """
+    #For each landscape
+    for i in range(len(beta_heterozygosity_matrices_list)):
+
+        n_repeats = len(beta_heterozygosity_matrices_list[i])
+
+        #for each repeat
+        for j in range(n_repeats):
+
+            # Beta matrix for this landscape and repeat, LAST ONE only
+            matrix = np.asarray(beta_heterozygosity_matrices_list[i][j][-1])
+            print(np.shape(matrix))
+            plt.figure(figsize=(8, 6))
+
+            plt.imshow(
+                matrix,
+                cmap="viridis",
+                interpolation="nearest"
+            )
+
+            plt.colorbar(label="Beta Heterozygosity")
+
+            plt.title(
+                f"Beta Heterozygosity Matrix "
+                f"for Landscape {i}, Repeat {j+1}"
+            )
+
+            # Matrix indices 0,...,19 correspond to Patch IDs 1,...,20
+            plt.xlabel("Patch Index")
+            plt.ylabel("Patch Index")
+
+            plt.xticks(
+                np.arange(matrix.shape[1]),
+                np.arange(1, matrix.shape[1] + 1)
+            )
+            plt.yticks(
+                np.arange(matrix.shape[0]),
+                np.arange(1, matrix.shape[0] + 1)
+            )
+
+            plt.savefig(
+                str(args.d)
+                + f"/Beta_Heterozygosity_Matrix_Landscape_{i}, "
+                f"Repeat_{j+1}.png"
+            )
+
+            plt.close()
 
 ###############################################################################
 #Generate new data files
