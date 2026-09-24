@@ -109,118 +109,6 @@ print(population_curves_list)
 
 import numpy as np
 
-#DELETE BELOWuuuu
-
-def heterozygosity_a(T, K=100):
-    """
-    Calculate a for heterozygosity decay on a network, where
-    H(t) ~ H_0 * exp(-t / (2a)).
-
-    T[i,j] = forward probability of moving from node i to node j.
-
-    Assumes:
-        - diploid Wright-Fisher reproduction
-        - K is the mean per-node carrying capacity (total
-          metapopulation size = n*K); actual per-node equilibrium
-          size is not flat K, but whatever migration in/out implies
-          (e.g. via CDMetaPOP's breeding/death dynamics), estimated
-          here from the stationary distribution of T
-        - neutral evolution
-        - migration described by T
-        - arbitrary (non-symmetric) T
-
-    Returns
-    -------
-    a : float
-        The predicted heterozygosity decay parameter a.
-
-    """
-
-    T = np.asarray(T, dtype=float)
-
-    n = T.shape[0]
-
-    if T.shape != (n, n):
-        raise ValueError("T must be square.")
-
-    # Normalise rows
-    T = T / T.sum(axis=1, keepdims=True)
-
-    # ---------------------------------------------------------
-    # Stationary distribution
-    #
-    # Under stable (if uneven) node populations, flow balance
-    # requires N_i = sum_k N_k * T[k,i], i.e. relative node sizes
-    # are the left eigenvector of T with eigenvalue 1.
-    # ---------------------------------------------------------
-
-    eigvals, eigvecs = np.linalg.eig(T.T)
-
-    idx = np.argmin(np.abs(eigvals - 1.0))
-
-    pi = np.real(eigvecs[:, idx])
-
-    # Eigenvectors can have arbitrary sign
-    pi = np.abs(pi)
-    pi /= pi.sum()
-
-    # ---------------------------------------------------------
-    # Backwards (ancestral) transition matrix
-    #
-    # B[i,j] = probability that the parent of an individual
-    #          in i was in j.
-    # ---------------------------------------------------------
-
-    B = np.zeros_like(T)
-
-    for i in range(n):
-        for j in range(n):
-            B[i, j] = pi[j] * T[j, i] / pi[i]
-
-    # ---------------------------------------------------------
-    # Two-lineage transition matrix
-    # ---------------------------------------------------------
-
-    Q = np.zeros((n*n, n*n))
-
-    N_total = n * K
-    N = pi * N_total
-
-    def state(i, j):
-        return i*n + j
-
-    for i in range(n):
-        for j in range(n):
-
-            row = state(i, j)
-
-            for k in range(n):
-                for l in range(n):
-
-                    p = B[i, k] * B[j, l]
-
-                    # If both lineages are in the same deme,
-                    # they coalesce with probability 1/(2*N_k),
-                    # where N_k is that deme's implied equilibrium
-                    # size (not flat K).
-                    if k == l:
-                        p *= (1.0 - 1.0/(2.0*N[k]))
-
-                    Q[row, state(k, l)] += p
-
-    # ---------------------------------------------------------
-    # Dominant eigenvalue
-    # ---------------------------------------------------------
-
-    eigenvalues = np.linalg.eigvals(Q)
-
-    lambda_max = np.max(np.real(eigenvalues))
-
-    # H(t) ~ H_0 * lambda_max**t = H_0 * exp(-t/(2a))
-    a = -1.0 / (2.0 * np.log(lambda_max))
-
-    return a
-
 if args.analysis_mode:
 
     """
@@ -384,7 +272,182 @@ def sort_TM_ByColSum(T):
     return T_sorted, order, input_weights, output_weights
 
 
+#=============================================================================#
+# REORDER HETEROZYGOSITY DATA
+#=============================================================================#
 
+def reorder_alpha_heterozygosity(alpha_data, order, has_dummy_index=True):
+    """
+    Reorder alpha heterozygosity according to a node permutation.
+
+    Parameters
+    ----------
+    alpha_data : list
+        Alpha data for one landscape:
+        [repeat][patch][time]
+
+        If has_dummy_index=True, patch index 0 is assumed to be
+        an empty/dummy entry, with patch 1 at index 1.
+
+    order : np.ndarray
+        Permutation of the transition-matrix node indices.
+
+    has_dummy_index : bool
+        Whether alpha_data has an unused element at index 0.
+
+    Returns
+    -------
+    alpha_reordered : list
+        Alpha heterozygosity with patch labels reordered.
+    """
+
+    alpha_reordered = []
+
+    for repeat in alpha_data:
+
+        if has_dummy_index:
+            # Matrix node 0 corresponds to patch 1,
+            # matrix node 1 corresponds to patch 2, etc.
+            patches = repeat[1:]
+
+            reordered_patches = [
+                patches[i]
+                for i in order
+            ]
+
+            # Put dummy element back at index 0
+            reordered_repeat = [repeat[0]] + reordered_patches
+
+        else:
+            reordered_repeat = [
+                repeat[i]
+                for i in order
+            ]
+
+        alpha_reordered.append(reordered_repeat)
+
+    return alpha_reordered
+
+
+def reorder_beta_heterozygosity(beta_data, order):
+    """
+    Reorder beta heterozygosity according to a node permutation.
+
+    Parameters
+    ----------
+    beta_data : list
+        Beta data for one landscape and one repeat:
+        [time][patch][patch]
+
+    order : np.ndarray
+        Permutation of the transition-matrix node indices.
+
+    Returns
+    -------
+    beta_reordered : list
+        Beta heterozygosity with both patch axes reordered.
+    """
+
+    beta_reordered = []
+
+    for matrix in beta_data:
+
+        matrix = np.asarray(matrix)
+
+        # Reorder both patch dimensions
+        matrix_reordered = matrix[np.ix_(order, order)]
+
+        beta_reordered.append(matrix_reordered)
+
+    return beta_reordered
+
+
+
+#=============================================================================#
+# SORT DATA BY TRANSITION-MATRIX COLUMN SUM
+#=============================================================================#
+
+Sorted_matrixlist = []
+Sorted_alpha_heterozygosity = []
+Sorted_beta_heterozygosity = []
+
+for i in range(len(matrixlist)):
+
+    # ---------------------------------------------------------
+    # Sort transition matrix
+    # ---------------------------------------------------------
+
+    T_sorted, order, input_weights, output_weights = (
+        sort_TM_ByColSum(np.asarray(matrixlist[i]))
+    )
+
+    Sorted_matrixlist.append(T_sorted)
+
+    # ---------------------------------------------------------
+    # Apply exactly the same node permutation to alpha data
+    # for every repeat of this landscape
+    # ---------------------------------------------------------
+
+    alpha_sorted = reorder_alpha_heterozygosity(
+        alpha_heterozygosity_curves_list[i],
+        order,
+        has_dummy_index=True
+    )
+
+    Sorted_alpha_heterozygosity.append(alpha_sorted)
+
+    # ---------------------------------------------------------
+    # Apply exactly the same node permutation to beta data
+    # for every repeat and every time point
+    # ---------------------------------------------------------
+
+    beta_sorted = []
+
+    for repeat in beta_heterozygosity_matrices_list[i]:
+
+        beta_sorted.append(
+            reorder_beta_heterozygosity(
+                repeat,
+                order
+            )
+        )
+
+    Sorted_beta_heterozygosity.append(beta_sorted)
+
+
+#=============================================================================#
+# SAVE SORTED DATA
+#=============================================================================#
+
+results_path = os.path.join(
+    str(args.d),
+    "Analysis_Results_Sorted.npz"
+)
+
+np.savez(
+    results_path,
+
+    matrixlist=np.asarray(
+        Sorted_matrixlist,
+        dtype=object
+    ),
+
+    Exponential_Decay_parameters=np.asarray(
+        Exponential_Decay_parameters,
+        dtype=object
+    ),
+
+    alpha_heterozygosity_curves_list=np.asarray(
+        Sorted_alpha_heterozygosity,
+        dtype=object
+    ),
+
+    beta_heterozygosity_matrices_list=np.asarray(
+        Sorted_beta_heterozygosity,
+        dtype=object
+    )
+)
+"""
 Sorted_matrixlist = []
 for TM in matrixlist:
     T_sorted, order, input_weights, output_weights = sort_TM_ByColSum(np.asarray(TM))
@@ -407,7 +470,7 @@ np.savez(
         dtype=object
     )
 )
-
+"""
 
 
 
@@ -441,6 +504,119 @@ def shuffle_transition_matrix(T):
     return T_shuffled, order
 
 
+#=============================================================================#
+# RANDOMLY SHUFFLE NODE LABELS
+#=============================================================================#
+
+Shuffled_MatrixList = []
+Shuffled_Alpha_Heterozygosity = []
+Shuffled_Beta_Heterozygosity = []
+Exponential_Decay_parameters_shuffle = []
+
+for i in range(len(matrixlist)):
+
+    TM = matrixlist[i]
+
+    Exponential_Decay_parameter = (
+        Exponential_Decay_parameters[i]
+    )
+
+    for j in range(args.shufflenum):
+
+        # ---------------------------------------------------------
+        # Generate one random permutation
+        # ---------------------------------------------------------
+
+        T_shuffled, order = shuffle_transition_matrix(
+            np.asarray(TM)
+        )
+
+        # ---------------------------------------------------------
+        # Store shuffled transition matrix
+        # ---------------------------------------------------------
+
+        Shuffled_MatrixList.append(T_shuffled)
+
+        # ---------------------------------------------------------
+        # Store corresponding decay parameter
+        # ---------------------------------------------------------
+
+        Exponential_Decay_parameters_shuffle.append(
+            Exponential_Decay_parameter
+        )
+
+        # ---------------------------------------------------------
+        # Shuffle alpha heterozygosity
+        #
+        # Same permutation for every repeat of this landscape
+        # ---------------------------------------------------------
+
+        alpha_shuffled = reorder_alpha_heterozygosity(
+            alpha_heterozygosity_curves_list[i],
+            order,
+            has_dummy_index=True    #Dummy index means that the first element of each repeat is unused, so we don't reorder it. default true
+        )
+
+        Shuffled_Alpha_Heterozygosity.append(
+            alpha_shuffled
+        )
+
+        # ---------------------------------------------------------
+        # Shuffle beta heterozygosity
+        #
+        # Same permutation applied to rows AND columns of
+        # every beta matrix at every time point and repeat
+        # ---------------------------------------------------------
+
+        beta_shuffled = []
+
+        for repeat in beta_heterozygosity_matrices_list[i]:
+
+            beta_shuffled.append(
+                reorder_beta_heterozygosity(
+                    repeat,
+                    order
+                )
+            )
+
+        Shuffled_Beta_Heterozygosity.append(
+            beta_shuffled
+        )
+
+
+#=============================================================================#
+# SAVE SHUFFLED DATA
+#=============================================================================#
+
+results_path = os.path.join(
+    str(args.d),
+    "Analysis_Results_Shuffled.npz"
+)
+
+np.savez(
+    results_path,
+
+    matrixlist=np.asarray(
+        Shuffled_MatrixList,
+        dtype=object
+    ),
+
+    Exponential_Decay_parameters=np.asarray(
+        Exponential_Decay_parameters_shuffle,
+        dtype=object
+    ),
+
+    alpha_heterozygosity_curves_list=np.asarray(
+        Shuffled_Alpha_Heterozygosity,
+        dtype=object
+    ),
+
+    beta_heterozygosity_matrices_list=np.asarray(
+        Shuffled_Beta_Heterozygosity,
+        dtype=object
+    )
+)
+"""
 Shuffled_MatrixList = []
 Exponential_Decay_parameters_shuffle = []
 
@@ -469,7 +645,7 @@ np.savez(
         dtype=object
     )
 )
-
+"""
 endtime = time.time()
 
 print("Time taken:",endtime-starttime)
