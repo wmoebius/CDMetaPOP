@@ -571,7 +571,8 @@ def main(d='', i='', r=0, graph_type='RGG', periodic='False', n=10, ProbDist=0.1
     #=============================================================================#
     # OUTPUT CDMATRIX.CSV
     #=============================================================================#
-    np.savetxt(outdir+"/inputs/cdmats/cdmatrix.csv", ProbMatrix, delimiter=",")    
+    #Need to transpose the ProbMatrix so that the rows correspond to the source patches and the columns correspond to the destination patches.
+    np.savetxt(outdir+"/inputs/cdmats/cdmatrix.csv", np.transpose(ProbMatrix), delimiter=",")    
 
     #=============================================================================#
     # OUTPUT PatchVars.CSV
