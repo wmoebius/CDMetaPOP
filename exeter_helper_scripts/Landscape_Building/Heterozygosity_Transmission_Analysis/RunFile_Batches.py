@@ -93,6 +93,8 @@ def analyse_repeat(args):
         delimiter=","
     )
 
+    matrix = np.transpose(matrix)
+
     #=========================================================================#
     # FIND RAW SIMULATION DIRECTORY
     #=========================================================================#
