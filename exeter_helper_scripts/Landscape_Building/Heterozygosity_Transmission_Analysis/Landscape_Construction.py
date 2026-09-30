@@ -451,8 +451,56 @@ def main(d='', i='', r=0, graph_type='RGG', periodic='False', n=10, ProbDist=0.1
 
 
     #=============================================================================#
+    # OUTPUT CDMATRIX.CSV
+    #=============================================================================#
+    # Written before the plotting section below: cdmatrix.csv/PatchVars.csv are
+    # what the rest of the pipeline depends on, while patch_locations.png is a
+    # diagnostic plot only. Writing the real data first means a plotting failure
+    # (e.g. matplotlib font-cache contention under many concurrent repeats) can no
+    # longer cost a repeat its usable output.
+    #Need to transpose the ProbMatrix so that the rows correspond to the source patches and the columns correspond to the destination patches.
+    np.savetxt(outdir+"/inputs/cdmats/cdmatrix.csv", np.transpose(ProbMatrix), delimiter=",")
+
+    #=============================================================================#
+    # OUTPUT PatchVars.CSV
+    #=============================================================================#
+    #PatchVars headings
+    PVars_heading = ["PatchID","X","Y","SubpatchNO","K","K StDev","N0","Natal Grounds","Migration Out Grounds","Genes Initialize","Class Vars","Mortality Out","Mortality Out StDev","Mortality Back","Mortality Back StDev","Mortality Eggs","Mortality Eggs StDev","Migration Out Prob","Set Migration Out","Migration Back Prob","Straying Prob","Dispersal Prob","GrowthTemperatureOut","GrowthTemperatureOutStDev","GrowDaysOut","GrowDaysOutStDev","GrowthTemperatureBack","GrowthTemperatureBackStDev","GrowDaysBack","GrowDaysBackStDev","Capture Probability Out","Capture Probability Back","HabitatOut","HabitatBack","Fitness_AA","Fitness_Aa","Fitness_aa","Fitness_BB","Fitness_Bb","Fitness_bb","Fitness_AABB","Fitness_AaBB","Fitness_aaBB","Fitness_AABb","Fitness_AaBb","Fitness_aaBb","Fitness_AAbb","Fitness_Aabb","Fitness_aabb","comp_coef"]
+
+    default_values = [1,1,1,1,100,0,100,1,0,"random","classvars/ClassVars.csv",0,0,0,0,0,0,0,"N",0,0,1,0,0,0,0,0,0,0,0,"N","N",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+
+
+    default_K = default_values[4]
+    default_N0 = default_values[6]
+
+    data = []
+    for i in range(len(Locations)):
+        data.append(copy.deepcopy(default_values))
+        data[-1][0] = i+1
+
+        if sticky_radius > 0:
+            data[-1][4] = default_K * Locations_Sizes[i]  # Scale K by the number of combined nodes
+            data[-1][6] = default_N0 * Locations_Sizes[i]  # Scale N0 by the number of combined nodes
+
+    df = pd.DataFrame(columns = PVars_heading,data=data)
+
+    df["X"] = df["X"].astype(float)
+    df["Y"] = df["Y"].astype(float)
+    #PatchVars = pd.DataFrame(data=data,index=PVars_heading)
+
+    #Set the locations:
+    for i in range(len(Locations)):
+        df.loc[i,"X"] = Locations[i][0]
+        df.loc[i,"Y"] = Locations[i][1]
+
+    df.to_csv(outdir+"/inputs/patchvars/PatchVars.csv",index=False)
+
+    #=============================================================================#
     # PLOTTING
     #=============================================================================#
+    # Diagnostic-only plot, written last so its failure (e.g. matplotlib
+    # font-cache contention under many concurrent repeats) can't cost the
+    # cdmatrix.csv/PatchVars.csv data already written above.
     # Create graph
     G = nx.MultiDiGraph()
 
@@ -568,47 +616,6 @@ def main(d='', i='', r=0, graph_type='RGG', periodic='False', n=10, ProbDist=0.1
     plt.savefig(outdir+"/inputs/cdmats/patch_locations.png",dpi=300)
     plt.close()
     """
-    #=============================================================================#
-    # OUTPUT CDMATRIX.CSV
-    #=============================================================================#
-    #Need to transpose the ProbMatrix so that the rows correspond to the source patches and the columns correspond to the destination patches.
-    np.savetxt(outdir+"/inputs/cdmats/cdmatrix.csv", np.transpose(ProbMatrix), delimiter=",")    
-
-    #=============================================================================#
-    # OUTPUT PatchVars.CSV
-    #=============================================================================#
-    #PatchVars headings
-    PVars_heading = ["PatchID","X","Y","SubpatchNO","K","K StDev","N0","Natal Grounds","Migration Out Grounds","Genes Initialize","Class Vars","Mortality Out","Mortality Out StDev","Mortality Back","Mortality Back StDev","Mortality Eggs","Mortality Eggs StDev","Migration Out Prob","Set Migration Out","Migration Back Prob","Straying Prob","Dispersal Prob","GrowthTemperatureOut","GrowthTemperatureOutStDev","GrowDaysOut","GrowDaysOutStDev","GrowthTemperatureBack","GrowthTemperatureBackStDev","GrowDaysBack","GrowDaysBackStDev","Capture Probability Out","Capture Probability Back","HabitatOut","HabitatBack","Fitness_AA","Fitness_Aa","Fitness_aa","Fitness_BB","Fitness_Bb","Fitness_bb","Fitness_AABB","Fitness_AaBB","Fitness_aaBB","Fitness_AABb","Fitness_AaBb","Fitness_aaBb","Fitness_AAbb","Fitness_Aabb","Fitness_aabb","comp_coef"]
-
-    default_values = [1,1,1,1,100,0,100,1,0,"random","classvars/ClassVars.csv",0,0,0,0,0,0,0,"N",0,0,1,0,0,0,0,0,0,0,0,"N","N",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-
-
-    default_K = default_values[4]
-    default_N0 = default_values[6]
-
-    data = []
-    for i in range(len(Locations)):
-        data.append(copy.deepcopy(default_values))
-        data[-1][0] = i+1
-
-        if sticky_radius > 0:
-            data[-1][4] = default_K * Locations_Sizes[i]  # Scale K by the number of combined nodes
-            data[-1][6] = default_N0 * Locations_Sizes[i]  # Scale N0 by the number of combined nodes
-
-    df = pd.DataFrame(columns = PVars_heading,data=data)
-
-    df["X"] = df["X"].astype(float)
-    df["Y"] = df["Y"].astype(float)
-    #PatchVars = pd.DataFrame(data=data,index=PVars_heading)
-
-    #Set the locations:
-    for i in range(len(Locations)):
-        df.loc[i,"X"] = Locations[i][0]
-        df.loc[i,"Y"] = Locations[i][1]
-
-    df.to_csv(outdir+"/inputs/patchvars/PatchVars.csv",index=False)
-
-
 
 
 

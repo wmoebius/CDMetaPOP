@@ -23,30 +23,69 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 #=============================================================================#
+# CONSTANTS
+#=============================================================================#
+
+MAX_LANDSCAPE_ATTEMPTS = 3
+LANDSCAPE_RETRY_DELAY_SECONDS = 5
+
+
+#=============================================================================#
 # WORKER FUNCTIONS
 #=============================================================================#
 
 def create_landscape(args):
     """
-    Create one landscape.
+    Create one landscape, retrying on failure.
 
-    This function is run in a separate process.
+    This function is run in a separate process. Returns
+    (rep, directoryname, success, error_message).
     """
 
     rep, directoryname, input_dir = args
 
-    print(f"Creating landscape for Repeat_{rep}")
+    last_error = None
 
-    Landscape_Construction.main(
-        n=n,
-        ProbDist=ProbDist,
-        param1=param1,
-        d=directoryname,
-        i=input_dir,
-        r=rep
-    )
+    for attempt in range(1, MAX_LANDSCAPE_ATTEMPTS + 1):
 
-    return rep, directoryname
+        if attempt > 1:
+
+            print(
+                f"Retrying landscape for Repeat_{rep} "
+                f"(attempt {attempt}/{MAX_LANDSCAPE_ATTEMPTS})"
+            )
+
+            shutil.rmtree(directoryname, ignore_errors=True)
+
+            time.sleep(LANDSCAPE_RETRY_DELAY_SECONDS)
+
+        else:
+
+            print(f"Creating landscape for Repeat_{rep}")
+
+        try:
+
+            Landscape_Construction.main(
+                n=n,
+                ProbDist=ProbDist,
+                param1=param1,
+                d=directoryname,
+                i=input_dir,
+                r=rep
+            )
+
+            return rep, directoryname, True, None
+
+        except Exception as e:
+
+            last_error = str(e)
+
+            print(
+                f"ERROR creating landscape for Repeat_{rep} "
+                f"(attempt {attempt}/{MAX_LANDSCAPE_ATTEMPTS}): {e}"
+            )
+
+    return rep, directoryname, False, last_error
 
 
 def analyse_repeat(args):
@@ -327,6 +366,8 @@ def main():
     alpha_heterozygosity_curves_list = []
     beta_heterozygosity_matrices_list = []
 
+    all_failed_repeats = []
+
     #========================================================================#
     # RUN BATCHES
     #========================================================================#
@@ -355,38 +396,86 @@ def main():
             for repeat_number, repeat_dir in batch
         ]
 
+        successful_batch = []
+        failed_repeat_numbers = []
+
         with ProcessPoolExecutor(
             max_workers=len(batch)
         ) as executor:
 
-            futures = [
+            futures = {
                 executor.submit(
                     create_landscape,
                     landscape_arg
-                )
+                ): landscape_arg[0]
                 for landscape_arg in landscape_args
-            ]
+            }
 
             for future in as_completed(futures):
 
+                repeat_number = futures[future]
+
                 try:
 
-                    repeat_number, repeat_dir = (
+                    repeat_number, repeat_dir, success, error_message = (
                         future.result()
                     )
 
-                    print(
-                        f"Finished landscape for "
-                        f"Repeat_{repeat_number}"
-                    )
+                    if success:
+
+                        successful_batch.append(
+                            (repeat_number, repeat_dir)
+                        )
+
+                        print(
+                            f"Finished landscape for "
+                            f"Repeat_{repeat_number}"
+                        )
+
+                    else:
+
+                        failed_repeat_numbers.append(repeat_number)
+
+                        print(
+                            f"Repeat_{repeat_number} landscape creation "
+                            f"failed after {MAX_LANDSCAPE_ATTEMPTS} "
+                            f"attempts: {error_message}"
+                        )
+
+                        all_failed_repeats.append(
+                            (repeat_number, error_message)
+                        )
 
                 except Exception as e:
 
                     print(
-                        f"ERROR creating landscape: {e}"
+                        f"ERROR creating landscape for "
+                        f"Repeat_{repeat_number}: {e}"
                     )
 
+                    failed_repeat_numbers.append(repeat_number)
+                    all_failed_repeats.append(
+                        (repeat_number, str(e))
+                    )
+
+        if failed_repeat_numbers:
+
+            print(
+                f"WARNING: {len(failed_repeat_numbers)} repeat(s) skipped "
+                f"after {MAX_LANDSCAPE_ATTEMPTS} attempts: "
+                f"{sorted(failed_repeat_numbers)}"
+            )
+
         print("Finished creating landscapes")
+
+        if not successful_batch:
+
+            print(
+                "Entire batch failed landscape creation "
+                "- skipping simulation and analysis for this batch"
+            )
+
+            continue
 
         #====================================================================#
         # RUN CDMetaPOP IN PARALLEL
@@ -396,7 +485,7 @@ def main():
 
         plist = []
 
-        for repeat_number, repeat_dir in batch:
+        for repeat_number, repeat_dir in successful_batch:
 
             print(
                 f"Starting Repeat_{repeat_number}"
@@ -446,7 +535,7 @@ def main():
         )
 
         with ProcessPoolExecutor(
-            max_workers=len(batch)
+            max_workers=len(successful_batch)
         ) as executor:
 
             futures = {
@@ -454,7 +543,7 @@ def main():
                     analyse_repeat,
                     (repeat_number, repeat_dir)
                 ): repeat_number
-                for repeat_number, repeat_dir in batch
+                for repeat_number, repeat_dir in successful_batch
             }
 
             for future in as_completed(futures):
@@ -567,6 +656,42 @@ def main():
     )
 
     print(results_path)
+
+    #========================================================================#
+    # FAILED REPEATS LOG
+    #========================================================================#
+
+    if all_failed_repeats:
+
+        failed_repeats_path = os.path.join(
+            SaveDirName,
+            "failed_repeats.txt"
+        )
+
+        with open(failed_repeats_path, "w") as failed_repeats_file:
+
+            for repeat_number, error_message in sorted(
+                all_failed_repeats,
+                key=lambda item: item[0]
+            ):
+
+                failed_repeats_file.write(
+                    f"Repeat_{repeat_number}: {error_message}\n"
+                )
+
+        print(
+            f"\n{len(all_failed_repeats)} repeat(s) permanently failed "
+            f"landscape creation after {MAX_LANDSCAPE_ATTEMPTS} attempts "
+            f"each. Details written to:"
+        )
+
+        print(failed_repeats_path)
+
+    else:
+
+        print(
+            "\nAll repeats succeeded landscape creation"
+        )
 
     #========================================================================#
     # FINISHED
