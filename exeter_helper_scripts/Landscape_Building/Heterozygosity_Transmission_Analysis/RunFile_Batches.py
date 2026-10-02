@@ -42,7 +42,7 @@ def create_landscape(args):
     (rep, directoryname, success, error_message).
     """
 
-    rep, directoryname, input_dir = args
+    rep, directoryname, input_dir,Global_RandomSeed = args
 
     last_error = None
 
@@ -71,7 +71,7 @@ def create_landscape(args):
                 param1=param1,
                 d=directoryname,
                 i=input_dir,
-                r=rep
+                r=rep + Global_RandomSeed
             )
 
             return rep, directoryname, True, None
@@ -293,11 +293,28 @@ def main():
         help="inputs directory for simulation"
     )
 
+
+    parser.add_argument(
+        "-random",
+        action="store_true",
+        help='Instantiate random number generator with a random seed (default: False)'
+    )
+
     args = parser.parse_args()
 
     #========================================================================#
     # SAVING DETAILS
     #========================================================================#
+
+    Global_RandomSeed = 0
+
+    if args.random:
+
+        Global_RandomSeed = np.random.randint(0, 2**32 - 1)
+
+        SaveDirName += "_randomseed_%d" %(Global_RandomSeed)
+
+
 
     os.makedirs(
         SaveDirName,
@@ -391,7 +408,8 @@ def main():
             (
                 repeat_number,
                 repeat_dir,
-                args.i
+                args.i,
+                Global_RandomSeed
             )
             for repeat_number, repeat_dir in batch
         ]
