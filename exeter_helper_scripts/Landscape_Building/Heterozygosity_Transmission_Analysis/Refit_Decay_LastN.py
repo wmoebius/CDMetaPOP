@@ -1,5 +1,8 @@
 import argparse
 import os
+import time
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,7 +42,12 @@ parser.add_argument(
     help="re-plot each landscape-wide heterozygosity curve with the refitted decay (default: False)"
 )
 
-args = parser.parse_args()
+parser.add_argument(
+    "-ncores",
+    type=int,
+    default=1,
+    help="number of cores to parallelise the refitting over (default: 1)"
+)
 
 
 #=============================================================================#
@@ -181,98 +189,223 @@ def plot_refit(curve, a, a_error, H0, n, output_file):
 
 
 #=============================================================================#
-# LOAD
+# WORKER FUNCTION
 #=============================================================================#
 
-with np.load(args.f, allow_pickle=True) as data:
-    results = {key: data[key] for key in data.files}
+def refit_curve(args):
+    """
+    Refit (and optionally plot) one curve.
 
-heterozygosity_curves_list = results["heterozygosity_curves_list"]
+    This function is run in a separate process. Returns
+    (repeat_index, a, a_error, H0, H0_error).
+    """
 
-print(
-    f"Loaded {len(heterozygosity_curves_list)} heterozygosity curves "
-    f"from {args.f}"
-)
+    repeat_index, curve, n, plot, plot_dir = args
 
-
-#=============================================================================#
-# REFIT
-#=============================================================================#
-
-Exponential_Decay_parameters = []
-Exponential_Decay_errors = []
-Exponential_Decay_amplitudes = []
-Exponential_Decay_amplitude_errors = []
-
-for repeat_index, curve in enumerate(heterozygosity_curves_list):
-
-    if len(curve) < args.n:
+    if len(curve) < n:
         print(
-            f"WARNING: curve {repeat_index} has only {len(curve)} "
-            f"generations, fewer than n = {args.n}; fitting over all of it"
+            f"  WARNING: curve {repeat_index} has only {len(curve)} "
+            f"generations, fewer than n = {n}; fitting over all of it",
+            flush=True
         )
 
-    a, a_error, H0, H0_error = fit_last_n(curve, args.n)
+    a, a_error, H0, H0_error = fit_last_n(curve, n)
 
-    Exponential_Decay_parameters.append(a)
-    Exponential_Decay_errors.append(a_error)
-    Exponential_Decay_amplitudes.append(H0)
-    Exponential_Decay_amplitude_errors.append(H0_error)
+    print(
+        f"  Curve index {repeat_index}: a = {a:.3f} +/- {a_error:.3f}",
+        flush=True
+    )
 
-    if args.plot:
+    if plot:
 
         plot_refit(
             curve,
             a,
             a_error,
             H0,
-            args.n,
+            n,
             os.path.join(
-                os.path.dirname(os.path.abspath(args.f)),
+                plot_dir,
                 f"refitted_heterozygosity_AVERAGE_landscape_average_"
-                f"Landscape_{repeat_index}_last{args.n}.png"
+                f"Landscape_{repeat_index}_last{n}.png"
             )
         )
 
-Exponential_Decay_parameters = np.asarray(Exponential_Decay_parameters)
-
-number_failed = np.count_nonzero(~np.isfinite(Exponential_Decay_parameters))
-
-print(f"Refitted a over the last {args.n} generations")
-print(f"  failed fits: {number_failed}")
-print(f"  median a:    {np.nanmedian(Exponential_Decay_parameters):.3f}")
+    return repeat_index, a, a_error, H0, H0_error
 
 
 #=============================================================================#
-# SAVE
+# MAIN
 #=============================================================================#
 
-# Keep everything from the original file, replacing the decay parameters
-# with the refitted ones so downstream analysis scripts work unchanged
+def main():
 
-results["Exponential_Decay_parameters_original"] = (
-    results["Exponential_Decay_parameters"]
-)
+    args = parser.parse_args()
 
-results["Exponential_Decay_parameters"] = np.asarray(
-    Exponential_Decay_parameters,
-    dtype=object
-)
+    #========================================================================#
+    # LOAD
+    #========================================================================#
 
-results["Exponential_Decay_errors"] = np.asarray(Exponential_Decay_errors)
-results["Exponential_Decay_amplitudes"] = np.asarray(
-    Exponential_Decay_amplitudes
-)
-results["Exponential_Decay_amplitude_errors"] = np.asarray(
-    Exponential_Decay_amplitude_errors
-)
-results["fit_last_n"] = np.asarray(args.n)
+    starttime = time.time()
 
-root, extension = os.path.splitext(args.f)
+    print(
+        f"Loading {args.f} "
+        f"({os.path.getsize(args.f) / 1e9:.2f} GB)",
+        flush=True
+    )
 
-output_path = f"{root}_last{args.n}{extension}"
+    results = {}
 
-np.savez(output_path, **results)
+    with np.load(args.f, allow_pickle=True) as data:
 
-print(f"\nSaved refitted results to:")
-print(output_path)
+        print(f"  Arrays in file: {data.files}", flush=True)
+
+        for key in data.files:
+
+            print(f"  Loading {key} ...", flush=True)
+
+            key_starttime = time.time()
+
+            results[key] = data[key]
+
+            print(
+                f"  Loaded {key}: shape {results[key].shape}, "
+                f"{time.time() - key_starttime:.1f} s",
+                flush=True
+            )
+
+    heterozygosity_curves_list = results["heterozygosity_curves_list"]
+
+    number_curves = len(heterozygosity_curves_list)
+
+    print(
+        f"Finished loading: {number_curves} heterozygosity "
+        f"curves ({time.time() - starttime:.1f} s)",
+        flush=True
+    )
+
+    #========================================================================#
+    # SPLIT INTO BATCHES
+    #========================================================================#
+
+    indexed_curves = list(enumerate(heterozygosity_curves_list))
+
+    Curve_Batches = [
+        indexed_curves[i:i + args.ncores]
+        for i in range(0, number_curves, args.ncores)
+    ]
+
+    print(
+        f"\nRefitting over the last {args.n} generations: "
+        f"{number_curves} curves in {len(Curve_Batches)} batches "
+        f"of maximum size {args.ncores}",
+        flush=True
+    )
+
+    #========================================================================#
+    # REFIT BATCH BY BATCH
+    #========================================================================#
+
+    Exponential_Decay_parameters = np.full(number_curves, np.nan)
+    Exponential_Decay_errors = np.full(number_curves, np.nan)
+    Exponential_Decay_amplitudes = np.full(number_curves, np.nan)
+    Exponential_Decay_amplitude_errors = np.full(number_curves, np.nan)
+
+    plot_dir = os.path.dirname(os.path.abspath(args.f))
+
+    # One pool for the whole run; each batch of ncores curves is submitted
+    # together and finished before the next batch starts
+
+    with ProcessPoolExecutor(
+        max_workers=args.ncores
+    ) as executor:
+
+        for batch_number, batch in enumerate(Curve_Batches):
+
+            print(
+                f"\nBATCH {batch_number + 1} / {len(Curve_Batches)}",
+                flush=True
+            )
+
+            futures = {
+                executor.submit(
+                    refit_curve,
+                    (repeat_index, curve, args.n, args.plot, plot_dir)
+                ): repeat_index
+                for repeat_index, curve in batch
+            }
+
+            for future in as_completed(futures):
+
+                repeat_index = futures[future]
+
+                try:
+
+                    repeat_index, a, a_error, H0, H0_error = (
+                        future.result()
+                    )
+
+                except Exception as e:
+
+                    print(
+                        f"ERROR refitting curve index {repeat_index}: {e}",
+                        flush=True
+                    )
+
+                    continue
+
+                # Store by curve index so the output keeps the input order
+                Exponential_Decay_parameters[repeat_index] = a
+                Exponential_Decay_errors[repeat_index] = a_error
+                Exponential_Decay_amplitudes[repeat_index] = H0
+                Exponential_Decay_amplitude_errors[repeat_index] = H0_error
+
+    number_failed = np.count_nonzero(
+        ~np.isfinite(Exponential_Decay_parameters)
+    )
+
+    print(f"\nRefitted a over the last {args.n} generations")
+    print(f"  failed fits: {number_failed}")
+    print(f"  median a:    {np.nanmedian(Exponential_Decay_parameters):.3f}")
+
+    #========================================================================#
+    # SAVE
+    #========================================================================#
+
+    # Keep everything from the original file, replacing the decay parameters
+    # with the refitted ones so downstream analysis scripts work unchanged
+
+    results["Exponential_Decay_parameters_original"] = (
+        results["Exponential_Decay_parameters"]
+    )
+
+    results["Exponential_Decay_parameters"] = np.asarray(
+        Exponential_Decay_parameters,
+        dtype=object
+    )
+
+    results["Exponential_Decay_errors"] = Exponential_Decay_errors
+    results["Exponential_Decay_amplitudes"] = Exponential_Decay_amplitudes
+    results["Exponential_Decay_amplitude_errors"] = (
+        Exponential_Decay_amplitude_errors
+    )
+    results["fit_last_n"] = np.asarray(args.n)
+
+    root, extension = os.path.splitext(args.f)
+
+    output_path = f"{root}_last{args.n}{extension}"
+
+    print(f"\nSaving refitted results to:\n{output_path}", flush=True)
+
+    np.savez(output_path, **results)
+
+    print("Finished saving", flush=True)
+    print(f"Total time taken: {time.time() - starttime:.1f} s")
+
+
+#=============================================================================#
+# ENTRY POINT
+#=============================================================================#
+
+if __name__ == "__main__":
+    main()
