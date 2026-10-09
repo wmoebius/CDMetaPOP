@@ -312,7 +312,8 @@ def main():
 
         Global_RandomSeed = np.random.randint(0, 2**32 - 1)
 
-        SaveDirName += "_randomseed_%d" %(Global_RandomSeed)
+    global SaveDirName
+    SaveDirName = SaveDirName + "_randomseed_%d" %(Global_RandomSeed)
 
 
 
