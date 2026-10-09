@@ -19,10 +19,10 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument(
-    "-d",
+    "-i",
     type=str,
     required=True,
-    help="Directory containing Analysis_Results.npz"
+    help="Path to the .npz results file to load"
 )
 
 parser.add_argument(
@@ -45,15 +45,15 @@ args = parser.parse_args()
 # LOAD RESULTS
 #=============================================================================#
 
-results_path = os.path.join(
-    args.d,
-    "Analysis_Results.npz"
-)
+results_path = args.i
 
 if not os.path.isfile(results_path):
     raise FileNotFoundError(
-        f"Could not find Analysis_Results.npz in: {args.d}"
+        f"Could not find results file: {results_path}"
     )
+
+# Outputs are written alongside the input file
+outdir = os.path.dirname(os.path.abspath(results_path))
 
 data = np.load(
     results_path,
@@ -128,7 +128,7 @@ if args.analysis_mode:
     plt.xlabel("Mixing time")
     plt.ylabel("Exponential decay parameters")
     plt.title("Mixing time vs Exponential decay parameters")
-    plt.savefig(str(args.d) + "/MixingTime_Versus_Decay.png")
+    plt.savefig(outdir + "/MixingTime_Versus_Decay.png")
     plt.close()
 
 
@@ -171,7 +171,7 @@ if args.analysis_mode:
             plt.legend()
 
             plt.savefig(
-                str(args.d)
+                outdir
                 + f"/Alpha_Heterozygosity_Curves_Landscape_{i}, Patch_{j+1}.png"
             )
 
@@ -222,7 +222,7 @@ if args.analysis_mode:
             )
 
             plt.savefig(
-                str(args.d)
+                outdir
                 + f"/Beta_Heterozygosity_Matrix_Landscape_{i}, "
                 f"Repeat_{j+1}.png"
             )
@@ -420,7 +420,7 @@ for i in range(len(matrixlist)):
 #=============================================================================#
 
 results_path = os.path.join(
-    str(args.d),
+    outdir,
     "Analysis_Results_Sorted.npz"
 )
 
@@ -458,7 +458,7 @@ for TM in matrixlist:
     #print(output_weights)
 
 results_path = os.path.join(
-    str(args.d),
+    outdir,
     "Analysis_Results_Sorted.npz"
 )
 
@@ -589,7 +589,7 @@ for i in range(len(matrixlist)):
 #=============================================================================#
 
 results_path = os.path.join(
-    str(args.d),
+    outdir,
     "Analysis_Results_Shuffled.npz"
 )
 
@@ -633,7 +633,7 @@ for i in range(len(matrixlist)):
     #print(order)
 
 results_path = os.path.join(
-    str(args.d),
+    outdir,
     "Analysis_Results_Shuffled.npz"
 )
 
