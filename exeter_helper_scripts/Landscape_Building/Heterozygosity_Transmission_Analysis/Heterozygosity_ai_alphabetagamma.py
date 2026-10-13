@@ -540,11 +540,12 @@ def fit_heterozygosity_curve(
 
     plt.close()
 
+    """
     print(
         f"  Plot written to:\n"
         f"    {output_file}"
     )
-
+    """
     return a, a_error, b, b_error
 
 

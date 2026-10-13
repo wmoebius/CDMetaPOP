@@ -37,9 +37,9 @@ def Mixing_Time(Dispersal_Matrix):
 
     mixing_time = 1 / (1 - second_largest)
 
-    print("|Eigenvalues|:", eigenvalues)
-    print("Second largest eigenvalue:", second_largest)
-    print("Mixing time:", mixing_time)
+    #print("|Eigenvalues|:", eigenvalues)
+    #print("Second largest eigenvalue:", second_largest)
+    #print("Mixing time:", mixing_time)
 
     return mixing_time
 

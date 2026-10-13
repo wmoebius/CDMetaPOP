@@ -15,10 +15,10 @@ Uses PyTorch Geometric NNConv so that the edge weights themselves
 are passed through a learned edge network.
 
 Usage:
-    python transition_gnn.py -i data.npz
+    python ML_Test_GNN_2.py -i data.npz
 
 Example:
-    python transition_gnn.py -i SaveFiles/data.npz --epochs 500
+    python ML_Test_GNN_2.py -i SaveFiles/data.npz --epochs 500
 """
 
 import argparse
@@ -29,6 +29,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
@@ -138,6 +139,7 @@ print(f"Using device: {device}")
 data = np.load(args.input, allow_pickle=True)
 
 matrixlist = data["matrixlist"]
+
 targets = np.asarray(
     data["Exponential_Decay_parameters"],
     dtype=np.float32
@@ -202,13 +204,7 @@ def matrix_to_graph(matrix, target):
     # --------------------------------------------------------
     # Node features
     # --------------------------------------------------------
-    #
-    # Every node starts with exactly the same feature:
-    #
-    #       x_i = 1
-    #
-    # We deliberately do NOT give nodes their indices.
-    #
+
     x = torch.ones(
         (n, 1),
         dtype=torch.float32
@@ -217,11 +213,7 @@ def matrix_to_graph(matrix, target):
     # --------------------------------------------------------
     # Directed edges
     # --------------------------------------------------------
-    #
-    # matrix[i,j] represents:
-    #
-    #       i -> j
-    #
+
     rows, cols = np.nonzero(matrix)
 
     edge_index = torch.tensor(
@@ -232,10 +224,7 @@ def matrix_to_graph(matrix, target):
     # --------------------------------------------------------
     # Edge attributes
     # --------------------------------------------------------
-    #
-    # Each edge receives its transition probability as an
-    # edge feature.
-    #
+
     edge_attr = torch.tensor(
         matrix[rows, cols].reshape(-1, 1),
         dtype=torch.float32
@@ -433,6 +422,7 @@ class EdgeNetwork(nn.Module):
         out_channels,
         hidden_dim
     ):
+
         super().__init__()
 
         self.network = nn.Sequential(
@@ -751,6 +741,10 @@ def evaluate(loader):
 best_validation_loss = np.inf
 best_state = None
 
+# Store losses for plotting afterwards
+train_losses = []
+validation_losses = []
+
 print()
 print("Training")
 print("----------------------------")
@@ -762,6 +756,10 @@ for epoch in range(1, args.epochs + 1):
     validation_loss, _, _ = evaluate(
         validation_loader
     )
+
+    # Store losses
+    train_losses.append(train_loss)
+    validation_losses.append(validation_loss)
 
     # --------------------------------------------------------
     # Save best model
@@ -812,7 +810,9 @@ test_loss, test_predictions, test_actual = evaluate(
 )
 
 
-# Convert back to original target units
+# ============================================================
+# CONVERT BACK TO ORIGINAL TARGET UNITS
+# ============================================================
 
 test_predictions_original = denormalise_target(
     test_predictions
@@ -911,6 +911,95 @@ if len(test_predictions_original) > 0:
             f"Actual = {actual:.6g}    "
             f"Predicted = {prediction:.6g}"
         )
+
+
+# ============================================================
+# PLOTS
+# ============================================================
+
+# ------------------------------------------------------------
+# Training and validation loss
+# ------------------------------------------------------------
+
+plt.figure(figsize=(8, 5))
+
+epochs = np.arange(
+    1,
+    len(train_losses) + 1
+)
+
+plt.plot(
+    epochs,
+    train_losses,
+    label="Training loss"
+)
+
+plt.plot(
+    epochs,
+    validation_losses,
+    label="Validation loss"
+)
+
+plt.xlabel("Epoch")
+plt.ylabel("MSE loss")
+plt.title("Training and validation loss")
+
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------
+# Actual vs predicted
+# ------------------------------------------------------------
+
+if len(test_predictions_original) > 0:
+
+    plt.figure(figsize=(7, 7))
+
+    plt.scatter(
+        test_actual_original,
+        test_predictions_original,
+        alpha=0.6
+    )
+
+    # Perfect prediction line
+    plot_min = min(
+        test_actual_original.min(),
+        test_predictions_original.min()
+    )
+
+    plot_max = max(
+        test_actual_original.max(),
+        test_predictions_original.max()
+    )
+
+    plt.plot(
+        [plot_min, plot_max],
+        [plot_min, plot_max],
+        "--",
+        label="Perfect prediction"
+    )
+
+    plt.xlabel(
+        "Actual exponential decay parameter"
+    )
+
+    plt.ylabel(
+        "Predicted exponential decay parameter"
+    )
+
+    plt.title(
+        "Actual vs predicted"
+    )
+
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
 
 
 # ============================================================
