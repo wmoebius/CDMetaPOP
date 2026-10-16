@@ -4,7 +4,7 @@ import argparse
 import copy
 import time
 
-from Matrix_Analysis import Mixing_Time
+from Core.Matrix_Analysis import Mixing_Time
 import matplotlib.pyplot as plt
 
 
@@ -182,6 +182,8 @@ if args.analysis_mode:
     For each landscape, plot the beta heterozygosity matrix
     for each repeat.
     """
+
+    """
     #For each landscape
     for i in range(len(beta_heterozygosity_matrices_list)):
 
@@ -228,7 +230,7 @@ if args.analysis_mode:
             )
 
             plt.close()
-
+    """
 ###############################################################################
 #Generate new data files
 ###############################################################################
