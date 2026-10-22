@@ -516,7 +516,7 @@ def main():
                 "19",
                 "uv",
                 "run",
-                "../../../src/CDmetaPOP.py",
+                "../src/CDmetaPOP.py",
                 os.path.join(
                     repeat_dir,
                     "inputs"
@@ -655,6 +655,13 @@ def main():
             dtype=object
         ),
 
+        # One entry per repeat (landscape): the MC-averaged mean number of
+        # individuals per patch at each generation (empty patches count as 0).
+        # This is the same curve shown on the right-hand (red) axis of each
+        # heterozygosity_AVERAGE_landscape_average_Landscape_<n>.png, so the
+        # population can be checked for stability / blow-ups after the fact.
+        # Curves are object-typed because a repeat that goes extinct early has
+        # fewer generations than the others.
         population_curves_list=np.asarray(
             population_curves_list,
             dtype=object

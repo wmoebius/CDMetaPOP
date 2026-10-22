@@ -432,6 +432,34 @@ def plot_curves(
     )
 
 
+def read_mean_patch_K(output_dir):
+    """
+    Return the mean patch carrying capacity K for this repeat, or None.
+
+    The analysis directory is laid out as
+        Repeat_<n>/outputs/raw/<run_dir>/
+    so the repeat's PatchVars.csv is at
+        Repeat_<n>/inputs/patchvars/PatchVars.csv
+    (three levels up). If the file is missing (e.g. this script was pointed at
+    some other directory), return None and the plot just leaves out the K line.
+    """
+
+    patchvars_file = (
+        Path(output_dir)
+        / "../../../inputs/patchvars/PatchVars.csv"
+    )
+
+    if not patchvars_file.is_file():
+        return None
+
+    try:
+        return float(
+            pd.read_csv(patchvars_file)["K"].mean()
+        )
+    except (KeyError, ValueError, pd.errors.ParserError):
+        return None
+
+
 def fit_heterozygosity_curve(
     generations,
     curve,
@@ -439,8 +467,21 @@ def fit_heterozygosity_curve(
     title,
     filename,
     repeat_number=-1,
+    population_curve=None,
+    carrying_capacity=None,
 ):
-    """Fit 0.5 * exp(-x / (2a)) to the averaged curve."""
+    """
+    Fit 0.5 * exp(-x / (2a)) to the averaged curve.
+
+    Optional population overlay (a sanity check on the demography):
+        population_curve   - MC-averaged mean number of individuals per patch
+                             (same length as generations). If given, it is plotted
+                             on a second y-axis on the right, so you can check that
+                             the population a) settles to a steady level and
+                             b) doesn't crash or blow up while H is decaying.
+        carrying_capacity  - mean patch K. If given, it is drawn as a horizontal
+                             reference line on the population axis.
+    """
 
     generations = np.asarray(
         generations,
@@ -512,7 +553,73 @@ def fit_heterozygosity_curve(
 
     ax.set_yscale("log")
     ax.grid(alpha=0.3)
-    ax.legend()
+
+    # ------------------------------------------------------------------------
+    # Population overlay on a second (right-hand) y-axis
+    # ------------------------------------------------------------------------
+    # twinx() shares the generation axis but has its own y scale. The population
+    # axis is linear and starts at 0, so a crash shows as a fall towards 0 and a
+    # blow-up shows as a climb well above the K line.
+    if population_curve is not None:
+
+        population_curve = np.asarray(
+            population_curve,
+            dtype=float,
+        )
+
+        ax_pop = ax.twinx()
+
+        ax_pop.plot(
+            generations,
+            population_curve,
+            linewidth=1.5,
+            color="tab:red",
+            alpha=0.8,
+            label="Mean N per patch",
+        )
+
+        # Mean patch carrying capacity, as a reference for "doesn't go crazy"
+        if carrying_capacity is not None:
+
+            ax_pop.axhline(
+                carrying_capacity,
+                linestyle="dotted",
+                color="tab:red",
+                alpha=0.6,
+                label=f"Mean patch K = {carrying_capacity:g}",
+            )
+
+        # Leave headroom above both the curve and K so neither touches the top
+        ymax_pop = np.nanmax(population_curve)
+
+        if carrying_capacity is not None:
+            ymax_pop = max(ymax_pop, carrying_capacity)
+
+        ax_pop.set_ylim(0, 1.1 * ymax_pop if ymax_pop > 0 else 1)
+
+        ax_pop.set_ylabel(
+            "Mean number of individuals per patch",
+            color="tab:red",
+        )
+
+        ax_pop.tick_params(
+            axis="y",
+            labelcolor="tab:red",
+        )
+
+        # Merge both axes' entries into one legend (otherwise each axis would
+        # draw its own and they would overlap)
+        lines, labels = ax.get_legend_handles_labels()
+        lines_pop, labels_pop = ax_pop.get_legend_handles_labels()
+
+        ax.legend(
+            lines + lines_pop,
+            labels + labels_pop,
+        )
+
+    else:
+
+        ax.legend()
 
     plt.tight_layout()
 
@@ -1235,6 +1342,10 @@ def analyse_npz(
             f"{number_runs} Monte-Carlo runs",
             "heterozygosity_AVERAGE_landscape_average",
             repeat_number=repeat_number,
+            # Overlay mean N per patch (right axis) plus a mean-K reference line,
+            # to check the population is stable while H decays
+            population_curve=average_population_curve,
+            carrying_capacity=read_mean_patch_K(output_dir),
         )
     )
 
@@ -1686,6 +1797,10 @@ def main(
             f"{number_runs} Monte-Carlo runs",
             "heterozygosity_AVERAGE_landscape_average",
             repeat_number=repeat_number,
+            # Overlay mean N per patch (right axis) plus a mean-K reference line,
+            # to check the population is stable while H decays
+            population_curve=average_population_curve,
+            carrying_capacity=read_mean_patch_K(output_dir),
         )
     )
 

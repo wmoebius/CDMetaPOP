@@ -1,8 +1,8 @@
 import numpy as np
 
 #Running parameters
-batch_num = 16#16
-batch_size = 64
+batch_num = 1#16#16
+batch_size = 10#64
 
 
 repeats = int(batch_num * batch_size)

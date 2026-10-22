@@ -467,7 +467,45 @@ def main(d='', i='', r=0, graph_type='RGG', periodic='False', n=10, ProbDist=0.1
     #PatchVars headings
     PVars_heading = ["PatchID","X","Y","SubpatchNO","K","K StDev","N0","Natal Grounds","Migration Out Grounds","Genes Initialize","Class Vars","Mortality Out","Mortality Out StDev","Mortality Back","Mortality Back StDev","Mortality Eggs","Mortality Eggs StDev","Migration Out Prob","Set Migration Out","Migration Back Prob","Straying Prob","Dispersal Prob","GrowthTemperatureOut","GrowthTemperatureOutStDev","GrowDaysOut","GrowDaysOutStDev","GrowthTemperatureBack","GrowthTemperatureBackStDev","GrowDaysBack","GrowDaysBackStDev","Capture Probability Out","Capture Probability Back","HabitatOut","HabitatBack","Fitness_AA","Fitness_Aa","Fitness_aa","Fitness_BB","Fitness_Bb","Fitness_bb","Fitness_AABB","Fitness_AaBB","Fitness_aaBB","Fitness_AABb","Fitness_AaBb","Fitness_aaBb","Fitness_AAbb","Fitness_Aabb","Fitness_aabb","comp_coef"]
 
-    default_values = [1,1,1,1,100,0,100,1,0,"random","classvars/ClassVars.csv",0,0,0,0,0,0,0,"N",0,0,1,0,0,0,0,0,0,0,0,"N","N",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    # NOTE: these default_values are what actually get written to every patch in
+    # PatchVars.csv. The PatchVars.csv inside the inputs template is ignored.
+    # Every patch is a natal (breeding) ground (index 7 = 1).
+
+    #=========================================================================#
+    # MOVEMENT MECHANISM: LOCAL DISPERSAL (in use)
+    #=========================================================================#
+    # Coarse-grained movement: one movement opportunity per year, every year.
+    # Each year, during the "back" phase (Immigration), every resident gets a
+    # dispersal check with probability
+    #     patch "Dispersal Prob" (index 21 = 1)  x  ClassVars "Dispersal Prob"
+    # so the ClassVars column alone sets the rate (e.g. 0~0.5 at age 1 and 0~0.2
+    # after: females 0, males 0.5 then 0.2).
+    # A disperser moves to another natal-ground patch, chosen with weights from
+    # its current patch's row of cdmatrix.csv (disperseLocalno = 9, matrix used
+    # as given; the diagonal is 0, so it always leaves its patch). It then breeds
+    # there. It comes back as a resident ("R"), so it can disperse again the next
+    # year. This was checked by tracking individual IDs: yearlings moved at ~0.5
+    # and older males at ~0.2 every year, with up to 8 moves in a lifetime.
+    #
+    # Migration is switched off: "Migration Out Prob" (index 17) = 0 and
+    # "Migration Back Prob" (index 19) = 0. "Migration Out Grounds" (index 8) is
+    # left at 1. That has no effect while migration is off, but if migration is
+    # ever re-enabled with grounds = 0, every migrant has nowhere to go and dies.
+    default_values = [1,1,1,1,100,0,100,1,1,"random","classvars/ClassVars.csv",0,0,0,0,0,0,0,"N",0,0,1,0,0,0,0,0,0,0,0,"N","N",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+
+    #=========================================================================#
+    # MOVEMENT MECHANISM: MIGRATION OUT (disabled, kept for reference)
+    #=========================================================================#
+    # Not used, because CDmetaPOP lets each individual migrate out at most ONCE
+    # in its lifetime, not once a year. A successful migrant is renamed "E"/"EO",
+    # and src/CDmetaPOP_Emigration.py blocks any "E" individual from migrating
+    # out again. With "Migration Back Prob" = 0 the male stays in the new patch.
+    # In testing, males older than one moved at only ~0.1/yr (falling with age)
+    # instead of 0.2, and no male moved more than once.
+    # To use it: patch "Migration Out Prob" (index 17) = 1, "Dispersal Prob"
+    # (index 21) = 0, and put the age probabilities in the ClassVars
+    # "Migration Out Prob" column.
+    #default_values = [1,1,1,1,100,0,100,1,1,"random","classvars/ClassVars.csv",0,0,0,0,0,0,1,"N",0,0,0,0,0,0,0,0,0,0,0,"N","N",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
 
     default_K = default_values[4]
